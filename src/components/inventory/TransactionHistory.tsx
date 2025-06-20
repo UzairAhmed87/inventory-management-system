@@ -4,15 +4,22 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileDown, Search, ShoppingCart, Package, Filter } from 'lucide-react';
+import { FileDown, Search, ShoppingCart, Package, Filter, Calendar } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { ExportUtils } from '@/utils/exportUtils';
 
 export const TransactionHistory = () => {
-  const { transactions, customers, vendors, products } = useInventoryStore();
+  const { transactions, customers, vendors } = useInventoryStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'sale' | 'purchase'>('all');
   const [dateFilter, setDateFilter] = useState('');
+  const [monthFilter, setMonthFilter] = useState('all');
+
+  const currentYear = new Date().getFullYear();
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
 
   const filteredTransactions = transactions
     .filter(t => {
@@ -24,7 +31,20 @@ export const TransactionHistory = () => {
       
       const matchesDate = !dateFilter || new Date(t.date).toISOString().split('T')[0] === dateFilter;
       
-      return matchesSearch && matchesType && matchesDate;
+      // Month filter
+      let matchesMonth = true;
+      if (monthFilter !== 'all') {
+        const transactionDate = new Date(t.date);
+        if (monthFilter === 'current') {
+          const currentMonth = new Date().getMonth();
+          matchesMonth = transactionDate.getMonth() === currentMonth && transactionDate.getFullYear() === currentYear;
+        } else {
+          const monthIndex = parseInt(monthFilter);
+          matchesMonth = transactionDate.getMonth() === monthIndex && transactionDate.getFullYear() === currentYear;
+        }
+      }
+      
+      return matchesSearch && matchesType && matchesDate && matchesMonth;
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -130,7 +150,7 @@ export const TransactionHistory = () => {
           <CardTitle>Filters</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Search</label>
               <div className="relative">
@@ -157,7 +177,24 @@ export const TransactionHistory = () => {
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Date</label>
+              <label className="text-sm font-medium mb-2 block">Month</label>
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Months</SelectItem>
+                  <SelectItem value="current">Current Month</SelectItem>
+                  {months.map((month, index) => (
+                    <SelectItem key={index} value={index.toString()}>
+                      {month} {currentYear}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Specific Date</label>
               <Input
                 type="date"
                 value={dateFilter}

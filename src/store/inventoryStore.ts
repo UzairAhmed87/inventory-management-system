@@ -6,7 +6,6 @@ export interface Product {
   id: string;
   name: string;
   quantity: number;
-  price: number;
   createdAt: Date;
 }
 
@@ -177,21 +176,18 @@ export const useInventoryStore = create<InventoryStore>()(
                 id: '1',
                 name: 'Laptop',
                 quantity: 25,
-                price: 999.99,
                 createdAt: new Date(),
               },
               {
                 id: '2',
                 name: 'Mouse',
                 quantity: 100,
-                price: 29.99,
                 createdAt: new Date(),
               },
               {
                 id: '3',
                 name: 'Keyboard',
                 quantity: 50,
-                price: 79.99,
                 createdAt: new Date(),
               },
             ],

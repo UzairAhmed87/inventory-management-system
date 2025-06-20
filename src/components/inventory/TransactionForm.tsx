@@ -4,10 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { X, ShoppingCart, Package } from 'lucide-react';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { X, ShoppingCart, Package, Check, ChevronsUpDown } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { toast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 interface TransactionFormProps {
   type: 'sale' | 'purchase';
@@ -26,6 +28,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
 
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [totalPrice, setTotalPrice] = useState(0);
+  const [openProduct, setOpenProduct] = useState(false);
+  const [openCustomer, setOpenCustomer] = useState(false);
+  const [openVendor, setOpenVendor] = useState(false);
 
   useEffect(() => {
     if (formData.quantity && formData.price) {
@@ -39,9 +44,6 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
     if (formData.productId) {
       const product = products.find(p => p.id === formData.productId);
       setSelectedProduct(product);
-      if (product) {
-        setFormData(prev => ({ ...prev, price: product.price.toString() }));
-      }
     }
   }, [formData.productId, products]);
 
@@ -130,51 +132,118 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Customer/Vendor Selection */}
+            {/* Customer/Vendor Selection with Search */}
             <div>
               <Label>
                 {type === 'sale' ? 'Customer' : 'Vendor'}
               </Label>
-              <Select
-                value={type === 'sale' ? formData.customerId : formData.vendorId}
-                onValueChange={(value) => 
-                  setFormData(prev => ({
-                    ...prev,
-                    [type === 'sale' ? 'customerId' : 'vendorId']: value
-                  }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder={`Select ${type === 'sale' ? 'customer' : 'vendor'}`} />
-                </SelectTrigger>
-                <SelectContent>
-                  {(type === 'sale' ? customers : vendors).map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name} - {item.phoneNo}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={type === 'sale' ? openCustomer : openVendor} onOpenChange={type === 'sale' ? setOpenCustomer : setOpenVendor}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={type === 'sale' ? openCustomer : openVendor}
+                    className="w-full justify-between"
+                  >
+                    {(type === 'sale' ? formData.customerId : formData.vendorId) ? (
+                      <span>
+                        {type === 'sale' 
+                          ? customers.find(c => c.id === formData.customerId)?.name
+                          : vendors.find(v => v.id === formData.vendorId)?.name
+                        }
+                      </span>
+                    ) : (
+                      <span>Select {type === 'sale' ? 'customer' : 'vendor'}...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0">
+                  <Command>
+                    <CommandInput placeholder={`Search ${type === 'sale' ? 'customer' : 'vendor'}...`} />
+                    <CommandList>
+                      <CommandEmpty>No {type === 'sale' ? 'customer' : 'vendor'} found.</CommandEmpty>
+                      <CommandGroup>
+                        {(type === 'sale' ? customers : vendors).map((item) => (
+                          <CommandItem
+                            key={item.id}
+                            value={item.name}
+                            onSelect={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                [type === 'sale' ? 'customerId' : 'vendorId']: item.id
+                              }));
+                              if (type === 'sale') {
+                                setOpenCustomer(false);
+                              } else {
+                                setOpenVendor(false);
+                              }
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                (type === 'sale' ? formData.customerId : formData.vendorId) === item.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {item.name} - {item.phoneNo}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
-            {/* Product Selection */}
+            {/* Product Selection with Search */}
             <div>
               <Label>Product</Label>
-              <Select
-                value={formData.productId}
-                onValueChange={(value) => setFormData(prev => ({ ...prev, productId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select product" />
-                </SelectTrigger>
-                <SelectContent>
-                  {products.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} - Stock: {product.quantity} - ${product.price}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={openProduct} onOpenChange={setOpenProduct}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={openProduct}
+                    className="w-full justify-between"
+                  >
+                    {formData.productId ? (
+                      <span>{selectedProduct?.name}</span>
+                    ) : (
+                      <span>Select product...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0">
+                  <Command>
+                    <CommandInput placeholder="Search product..." />
+                    <CommandList>
+                      <CommandEmpty>No product found.</CommandEmpty>
+                      <CommandGroup>
+                        {products.map((product) => (
+                          <CommandItem
+                            key={product.id}
+                            value={product.name}
+                            onSelect={() => {
+                              setFormData(prev => ({ ...prev, productId: product.id }));
+                              setOpenProduct(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.productId === product.id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            {product.name} - Stock: {product.quantity}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Stock Warning for Sales */}
@@ -201,7 +270,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
 
             {/* Price */}
             <div>
-              <Label htmlFor="price">Unit Price</Label>
+              <Label htmlFor="price">Unit Price ($)</Label>
               <Input
                 id="price"
                 type="number"

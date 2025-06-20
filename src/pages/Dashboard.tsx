@@ -8,6 +8,7 @@ import { CustomerSection } from '@/components/inventory/CustomerSection';
 import { VendorSection } from '@/components/inventory/VendorSection';
 import { TransactionForm } from '@/components/inventory/TransactionForm';
 import { TransactionHistory } from '@/components/inventory/TransactionHistory';
+import { OverviewDashboard } from '@/components/inventory/OverviewDashboard';
 import { useInventoryStore } from '@/store/inventoryStore';
 
 const Dashboard = () => {
@@ -15,19 +16,11 @@ const Dashboard = () => {
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionType, setTransactionType] = useState<'sale' | 'purchase'>('sale');
   
-  const { products, customers, vendors, transactions, initializeStore } = useInventoryStore();
+  const { initializeStore } = useInventoryStore();
 
   useEffect(() => {
     initializeStore();
   }, [initializeStore]);
-
-  const stats = {
-    totalProducts: products.length,
-    totalCustomers: customers.length,
-    totalVendors: vendors.length,
-    totalTransactions: transactions.length,
-    lowStockProducts: products.filter(p => p.quantity <= 10).length
-  };
 
   const handleNewTransaction = (type: 'sale' | 'purchase') => {
     setTransactionType(type);
@@ -45,55 +38,7 @@ const Dashboard = () => {
       case 'transactions':
         return <TransactionHistory />;
       default:
-        return (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-                <Package className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalProducts}</div>
-                <p className="text-xs opacity-80">
-                  {stats.lowStockProducts} low stock items
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-                <Users className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalCustomers}</div>
-                <p className="text-xs opacity-80">Active customers</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-purple-500 to-purple-600 text-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Vendors</CardTitle>
-                <Truck className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalVendors}</div>
-                <p className="text-xs opacity-80">Supplier partners</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Transactions</CardTitle>
-                <TrendingUp className="h-4 w-4" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats.totalTransactions}</div>
-                <p className="text-xs opacity-80">Total transactions</p>
-              </CardContent>
-            </Card>
-          </div>
-        );
+        return <OverviewDashboard />;
     }
   };
 
