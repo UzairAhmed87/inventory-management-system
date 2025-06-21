@@ -32,22 +32,22 @@ export const OverviewDashboard = () => {
     outOfStockProducts: products.filter(p => p.quantity === 0).length,
     
     // Current month sales
-    currentMonthSales: currentMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
-    currentMonthPurchases: currentMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
+    currentMonthSales: currentMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+    currentMonthPurchases: currentMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
     currentMonthTransactions: currentMonthTransactions.length,
     
     // Previous month for comparison
-    previousMonthSales: previousMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
-    previousMonthPurchases: previousMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
+    previousMonthSales: previousMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+    previousMonthPurchases: previousMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
     
     // All time stats
-    totalSales: transactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
-    totalPurchases: transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
+    totalSales: transactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
+    totalPurchases: transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + (t.totalAmount || 0), 0),
     totalTransactions: transactions.length,
 
     // Balance stats
-    totalCustomerBalance: customers.reduce((sum, c) => sum + c.balance, 0),
-    totalVendorBalance: vendors.reduce((sum, v) => sum + v.balance, 0),
+    totalCustomerBalance: customers.reduce((sum, c) => sum + (c.balance || 0), 0),
+    totalVendorBalance: vendors.reduce((sum, v) => sum + (v.balance || 0), 0),
   };
 
   // Calculate growth percentages
@@ -63,9 +63,13 @@ export const OverviewDashboard = () => {
   const productSales = currentMonthTransactions
     .filter(t => t.type === 'sale')
     .reduce((acc, t) => {
-      t.items.forEach(item => {
-        acc[item.productName] = (acc[item.productName] || 0) + item.quantity;
-      });
+      if (t.items && Array.isArray(t.items)) {
+        t.items.forEach(item => {
+          if (item && item.productName) {
+            acc[item.productName] = (acc[item.productName] || 0) + (item.quantity || 0);
+          }
+        });
+      }
       return acc;
     }, {} as Record<string, number>);
 
@@ -288,7 +292,7 @@ export const OverviewDashboard = () => {
                   <div key={transaction.id} className="flex items-center justify-between border-b pb-2">
                     <div>
                       <p className="font-medium">
-                        {transaction.items.length} item{transaction.items.length > 1 ? 's' : ''}
+                        {(transaction.items && Array.isArray(transaction.items) ? transaction.items.length : 0)} item{(transaction.items && Array.isArray(transaction.items) && transaction.items.length > 1) ? 's' : ''}
                       </p>
                       <p className="text-sm text-gray-500">
                         {new Date(transaction.date).toLocaleDateString()} • 
@@ -298,9 +302,12 @@ export const OverviewDashboard = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold">PKR {transaction.totalAmount.toFixed(2)}</p>
+                      <p className="font-bold">PKR {(transaction.totalAmount || 0).toFixed(2)}</p>
                       <p className="text-sm text-gray-500">
-                        {transaction.items.reduce((sum, item) => sum + item.quantity, 0)} units
+                        {transaction.items && Array.isArray(transaction.items) 
+                          ? transaction.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
+                          : 0
+                        } units
                       </p>
                     </div>
                   </div>

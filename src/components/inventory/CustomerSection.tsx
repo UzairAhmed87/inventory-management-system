@@ -75,8 +75,8 @@ export const CustomerSection = () => {
           Date: new Date(t.date).toLocaleDateString(),
           Product: item.productName,
           Quantity: item.quantity,
-          Price: `PKR ${item.price.toFixed(2)}`,
-          'Total Price': `PKR ${item.totalPrice.toFixed(2)}`
+          Price: `PKR ${(item.price || 0).toFixed(2)}`,
+          'Total Price': `PKR ${(item.totalPrice || 0).toFixed(2)}`
         });
       });
     });
@@ -206,8 +206,8 @@ export const CustomerSection = () => {
                 <p className="text-sm text-gray-600">
                   Purchases: {getCustomerTransactions(customer.id).length}
                 </p>
-                <p className={`text-sm font-medium ${customer.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  Balance: PKR {customer.balance.toFixed(2)}
+                <p className={`text-sm font-medium ${(customer.balance || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  Balance: PKR {(customer.balance || 0).toFixed(2)}
                 </p>
               </CardContent>
             </Card>
@@ -252,13 +252,13 @@ export const CustomerSection = () => {
                         <p className="text-sm text-gray-600">
                           {new Date(transaction.date).toLocaleDateString()}
                         </p>
-                        <p className="font-medium">PKR {transaction.totalAmount.toFixed(2)}</p>
+                        <p className="font-medium">PKR {(transaction.totalAmount || 0).toFixed(2)}</p>
                       </div>
                       <div className="space-y-1">
                         {transaction.items.map((item, index) => (
                           <div key={index} className="flex justify-between text-sm">
                             <span>{item.productName} x {item.quantity}</span>
-                            <span>PKR {item.totalPrice.toFixed(2)}</span>
+                            <span>PKR {(item.totalPrice || 0).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>

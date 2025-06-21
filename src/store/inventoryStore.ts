@@ -11,6 +11,7 @@ export interface Product {
 
 export interface Customer {
   id: string;
+  uniqueId: string; // New unique ID field
   name: string;
   phoneNo: string;
   balance: number; // Outstanding balance (positive = they owe us)
@@ -19,6 +20,7 @@ export interface Customer {
 
 export interface Vendor {
   id: string;
+  uniqueId: string; // New unique ID field
   name: string;
   phoneNo: string;
   balance: number; // Outstanding balance (positive = we owe them)
@@ -27,6 +29,7 @@ export interface Vendor {
 
 export interface Transaction {
   id: string;
+  invoiceNumber: string; // New invoice number field
   type: 'sale' | 'purchase';
   customerId?: string;
   vendorId?: string;
@@ -38,6 +41,8 @@ export interface Transaction {
     totalPrice: number;
   }[];
   totalAmount: number;
+  previousBalance: number; // New field for previous balance
+  newBalance: number; // New field for new balance after transaction
   date: Date;
 }
 
@@ -62,18 +67,20 @@ interface InventoryStore {
   updateProduct: (id: string, product: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'balance'>) => void;
+  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'balance' | 'uniqueId'>) => void;
   updateCustomer: (id: string, customer: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   
-  addVendor: (vendor: Omit<Vendor, 'id' | 'createdAt' | 'balance'>) => void;
+  addVendor: (vendor: Omit<Vendor, 'id' | 'createdAt' | 'balance' | 'uniqueId'>) => void;
   updateVendor: (id: string, vendor: Partial<Vendor>) => void;
   deleteVendor: (id: string) => void;
   
-  addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
+  addTransaction: (transaction: Omit<Transaction, 'id' | 'invoiceNumber' | 'previousBalance' | 'newBalance'>) => void;
   addBalancePayment: (payment: Omit<BalancePayment, 'id'>) => void;
   
   initializeStore: () => void;
+  generateUniqueId: (type: 'customer' | 'vendor') => string;
+  generateInvoiceNumber: (type: 'sale' | 'purchase') => string;
 }
 
 export const useInventoryStore = create<InventoryStore>()(
@@ -84,6 +91,41 @@ export const useInventoryStore = create<InventoryStore>()(
       vendors: [],
       transactions: [],
       balancePayments: [],
+      
+      generateUniqueId: (type: 'customer' | 'vendor') => {
+        const state = get();
+        const prefix = type === 'customer' ? 'CUST' : 'VEND';
+        const existingIds = type === 'customer' 
+          ? state.customers.map(c => c.uniqueId)
+          : state.vendors.map(v => v.uniqueId);
+        
+        let counter = 1;
+        let newId = `${prefix}${counter.toString().padStart(4, '0')}`;
+        
+        while (existingIds.includes(newId)) {
+          counter++;
+          newId = `${prefix}${counter.toString().padStart(4, '0')}`;
+        }
+        
+        return newId;
+      },
+
+      generateInvoiceNumber: (type: 'sale' | 'purchase') => {
+        const state = get();
+        const prefix = type === 'sale' ? 'INV' : 'PUR';
+        const today = new Date();
+        const dateStr = today.getFullYear().toString() + 
+                       (today.getMonth() + 1).toString().padStart(2, '0') + 
+                       today.getDate().toString().padStart(2, '0');
+        
+        const todayTransactions = state.transactions.filter(t => 
+          t.type === type && 
+          new Date(t.date).toDateString() === today.toDateString()
+        );
+        
+        const counter = todayTransactions.length + 1;
+        return `${prefix}${dateStr}${counter.toString().padStart(3, '0')}`;
+      },
       
       addProduct: (product) => {
         const newProduct: Product = {
@@ -111,9 +153,11 @@ export const useInventoryStore = create<InventoryStore>()(
       },
       
       addCustomer: (customer) => {
+        const state = get();
         const newCustomer: Customer = {
           ...customer,
           id: crypto.randomUUID(),
+          uniqueId: state.generateUniqueId('customer'),
           balance: 0,
           createdAt: new Date(),
         };
@@ -137,9 +181,11 @@ export const useInventoryStore = create<InventoryStore>()(
       },
       
       addVendor: (vendor) => {
+        const state = get();
         const newVendor: Vendor = {
           ...vendor,
           id: crypto.randomUUID(),
+          uniqueId: state.generateUniqueId('vendor'),
           balance: 0,
           createdAt: new Date(),
         };
@@ -163,9 +209,27 @@ export const useInventoryStore = create<InventoryStore>()(
       },
       
       addTransaction: (transaction) => {
+        const state = get();
+        const invoiceNumber = state.generateInvoiceNumber(transaction.type);
+        
+        // Get current balance
+        let previousBalance = 0;
+        if (transaction.type === 'sale' && transaction.customerId) {
+          const customer = state.customers.find(c => c.id === transaction.customerId);
+          previousBalance = customer?.balance || 0;
+        } else if (transaction.type === 'purchase' && transaction.vendorId) {
+          const vendor = state.vendors.find(v => v.id === transaction.vendorId);
+          previousBalance = vendor?.balance || 0;
+        }
+
+        const newBalance = previousBalance + transaction.totalAmount;
+
         const newTransaction: Transaction = {
           ...transaction,
           id: crypto.randomUUID(),
+          invoiceNumber,
+          previousBalance,
+          newBalance,
         };
         
         set((state) => {
@@ -267,6 +331,7 @@ export const useInventoryStore = create<InventoryStore>()(
             customers: [
               {
                 id: '1',
+                uniqueId: 'CUST0001',
                 name: 'John Doe',
                 phoneNo: '+1234567890',
                 balance: 0,
@@ -274,6 +339,7 @@ export const useInventoryStore = create<InventoryStore>()(
               },
               {
                 id: '2',
+                uniqueId: 'CUST0002',
                 name: 'Jane Smith',
                 phoneNo: '+0987654321',
                 balance: 0,
@@ -283,6 +349,7 @@ export const useInventoryStore = create<InventoryStore>()(
             vendors: [
               {
                 id: '1',
+                uniqueId: 'VEND0001',
                 name: 'Tech Supplies Inc',
                 phoneNo: '+1122334455',
                 balance: 0,
@@ -290,6 +357,7 @@ export const useInventoryStore = create<InventoryStore>()(
               },
               {
                 id: '2',
+                uniqueId: 'VEND0002',
                 name: 'Hardware Solutions',
                 phoneNo: '+5544332211',
                 balance: 0,
