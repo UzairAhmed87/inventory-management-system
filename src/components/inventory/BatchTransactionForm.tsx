@@ -421,7 +421,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           type="number"
           min="1"
           value={item.quantity.toString()}
-          onChange={(e) => onUpdate(item.id, 'quantity', e.target.value)}
+          onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
           className="w-20"
           size="sm"
         />
@@ -432,7 +432,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           step="0.01"
           min="0"
           value={item.price.toString()}
-          onChange={(e) => onUpdate(item.id, 'price', e.target.value)}
+          onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
           className="w-24"
           size="sm"
         />
