@@ -417,13 +417,12 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
         </Popover>
       </td>
       <td className="px-4 py-3">
-        <Input
+         <Input
           type="number"
           min="1"
           value={item.quantity.toString()}
           onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
           className="w-20"
-          size="sm"
         />
       </td>
       <td className="px-4 py-3">
@@ -434,7 +433,6 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           value={item.price.toString()}
           onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
           className="w-24"
-          size="sm"
         />
       </td>
       <td className="px-4 py-3">
