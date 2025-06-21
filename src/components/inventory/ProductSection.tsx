@@ -161,7 +161,7 @@ export const ProductSection = () => {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Products</SelectItem>
-                  <SelectItem value="in-stock">In Stock (>10)</SelectItem>
+                  <SelectItem value="in-stock">In Stock ({'>'}10)</SelectItem>
                   <SelectItem value="low-stock">Low Stock (1-10)</SelectItem>
                   <SelectItem value="out-of-stock">Out of Stock (0)</SelectItem>
                 </SelectContent>
