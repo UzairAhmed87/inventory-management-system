@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit, Trash, Package } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Plus, Edit, Trash, Package, Search, Filter } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
@@ -12,6 +13,8 @@ export const ProductSection = () => {
   const { products, addProduct, updateProduct, deleteProduct } = useInventoryStore();
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
   const [formData, setFormData] = useState({
     name: '',
     quantity: '',
@@ -58,6 +61,23 @@ export const ProductSection = () => {
     setEditingProduct(null);
     setShowForm(false);
   };
+
+  const filteredProducts = products.filter(product => {
+    const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = (() => {
+      switch (stockFilter) {
+        case 'out-of-stock':
+          return product.quantity === 0;
+        case 'low-stock':
+          return product.quantity > 0 && product.quantity <= 10;
+        case 'in-stock':
+          return product.quantity > 10;
+        default:
+          return true;
+      }
+    })();
+    return matchesSearch && matchesFilter;
+  });
 
   return (
     <div className="space-y-6">
@@ -111,8 +131,48 @@ export const ProductSection = () => {
         </Dialog>
       </div>
 
+      {/* Search and Filter Controls */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="h-5 w-5 mr-2" />
+            Search & Filter
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Search Products</Label>
+              <div className="relative">
+                <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                <Input
+                  placeholder="Search by product name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Stock Filter</Label>
+              <Select value={stockFilter} onValueChange={(value: any) => setStockFilter(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Products</SelectItem>
+                  <SelectItem value="in-stock">In Stock (>10)</SelectItem>
+                  <SelectItem value="low-stock">Low Stock (1-10)</SelectItem>
+                  <SelectItem value="out-of-stock">Out of Stock (0)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {products.map((product) => (
+        {filteredProducts.map((product) => (
           <Card key={product.id} className="hover:shadow-lg transition-shadow">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <div className="flex items-center space-x-2">
@@ -141,12 +201,20 @@ export const ProductSection = () => {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Quantity:</span>
-                  <span className={`font-semibold ${product.quantity <= 10 ? 'text-red-600' : 'text-green-600'}`}>
+                  <span className={`font-semibold ${
+                    product.quantity === 0 ? 'text-red-600' : 
+                    product.quantity <= 10 ? 'text-orange-600' : 'text-green-600'
+                  }`}>
                     {product.quantity}
                   </span>
                 </div>
-                {product.quantity <= 10 && (
+                {product.quantity === 0 && (
                   <div className="bg-red-100 text-red-700 text-xs px-2 py-1 rounded">
+                    Out of Stock
+                  </div>
+                )}
+                {product.quantity > 0 && product.quantity <= 10 && (
+                  <div className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded">
                     Low Stock Warning
                   </div>
                 )}
@@ -156,11 +224,16 @@ export const ProductSection = () => {
         ))}
       </div>
 
-      {products.length === 0 && (
+      {filteredProducts.length === 0 && (
         <Card className="text-center py-12">
           <CardContent>
             <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No products found. Add your first product to get started.</p>
+            <p className="text-gray-600">
+              {products.length === 0 
+                ? "No products found. Add your first product to get started."
+                : "No products match your search criteria."
+              }
+            </p>
           </CardContent>
         </Card>
       )}

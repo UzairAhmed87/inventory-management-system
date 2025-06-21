@@ -13,6 +13,7 @@ export interface Customer {
   id: string;
   name: string;
   phoneNo: string;
+  balance: number; // Outstanding balance (positive = they owe us)
   createdAt: Date;
 }
 
@@ -20,6 +21,7 @@ export interface Vendor {
   id: string;
   name: string;
   phoneNo: string;
+  balance: number; // Outstanding balance (positive = we owe them)
   createdAt: Date;
 }
 
@@ -28,12 +30,25 @@ export interface Transaction {
   type: 'sale' | 'purchase';
   customerId?: string;
   vendorId?: string;
-  productId: string;
-  productName: string;
-  quantity: number;
-  price: number;
-  totalPrice: number;
+  items: {
+    productId: string;
+    productName: string;
+    quantity: number;
+    price: number;
+    totalPrice: number;
+  }[];
+  totalAmount: number;
   date: Date;
+}
+
+export interface BalancePayment {
+  id: string;
+  type: 'customer_payment' | 'vendor_payment';
+  customerId?: string;
+  vendorId?: string;
+  amount: number;
+  date: Date;
+  notes?: string;
 }
 
 interface InventoryStore {
@@ -41,20 +56,22 @@ interface InventoryStore {
   customers: Customer[];
   vendors: Vendor[];
   transactions: Transaction[];
+  balancePayments: BalancePayment[];
   
   addProduct: (product: Omit<Product, 'id' | 'createdAt'>) => void;
   updateProduct: (id: string, product: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   
-  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt'>) => void;
+  addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'balance'>) => void;
   updateCustomer: (id: string, customer: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   
-  addVendor: (vendor: Omit<Vendor, 'id' | 'createdAt'>) => void;
+  addVendor: (vendor: Omit<Vendor, 'id' | 'createdAt' | 'balance'>) => void;
   updateVendor: (id: string, vendor: Partial<Vendor>) => void;
   deleteVendor: (id: string) => void;
   
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
+  addBalancePayment: (payment: Omit<BalancePayment, 'id'>) => void;
   
   initializeStore: () => void;
 }
@@ -66,6 +83,7 @@ export const useInventoryStore = create<InventoryStore>()(
       customers: [],
       vendors: [],
       transactions: [],
+      balancePayments: [],
       
       addProduct: (product) => {
         const newProduct: Product = {
@@ -96,6 +114,7 @@ export const useInventoryStore = create<InventoryStore>()(
         const newCustomer: Customer = {
           ...customer,
           id: crypto.randomUUID(),
+          balance: 0,
           createdAt: new Date(),
         };
         set((state) => ({
@@ -121,6 +140,7 @@ export const useInventoryStore = create<InventoryStore>()(
         const newVendor: Vendor = {
           ...vendor,
           id: crypto.randomUUID(),
+          balance: 0,
           createdAt: new Date(),
         };
         set((state) => ({
@@ -150,18 +170,71 @@ export const useInventoryStore = create<InventoryStore>()(
         
         set((state) => {
           const updatedProducts = state.products.map((product) => {
-            if (product.id === transaction.productId) {
+            const transactionItem = transaction.items.find(item => item.productId === product.id);
+            if (transactionItem) {
               const newQuantity = transaction.type === 'sale' 
-                ? product.quantity - transaction.quantity
-                : product.quantity + transaction.quantity;
+                ? product.quantity - transactionItem.quantity
+                : product.quantity + transactionItem.quantity;
               return { ...product, quantity: Math.max(0, newQuantity) };
             }
             return product;
           });
+
+          // Update customer/vendor balance
+          let updatedCustomers = state.customers;
+          let updatedVendors = state.vendors;
+
+          if (transaction.type === 'sale' && transaction.customerId) {
+            updatedCustomers = state.customers.map(customer => 
+              customer.id === transaction.customerId 
+                ? { ...customer, balance: customer.balance + transaction.totalAmount }
+                : customer
+            );
+          } else if (transaction.type === 'purchase' && transaction.vendorId) {
+            updatedVendors = state.vendors.map(vendor => 
+              vendor.id === transaction.vendorId 
+                ? { ...vendor, balance: vendor.balance + transaction.totalAmount }
+                : vendor
+            );
+          }
           
           return {
             transactions: [...state.transactions, newTransaction],
             products: updatedProducts,
+            customers: updatedCustomers,
+            vendors: updatedVendors,
+          };
+        });
+      },
+
+      addBalancePayment: (payment) => {
+        const newPayment: BalancePayment = {
+          ...payment,
+          id: crypto.randomUUID(),
+        };
+
+        set((state) => {
+          let updatedCustomers = state.customers;
+          let updatedVendors = state.vendors;
+
+          if (payment.type === 'customer_payment' && payment.customerId) {
+            updatedCustomers = state.customers.map(customer => 
+              customer.id === payment.customerId 
+                ? { ...customer, balance: customer.balance - payment.amount }
+                : customer
+            );
+          } else if (payment.type === 'vendor_payment' && payment.vendorId) {
+            updatedVendors = state.vendors.map(vendor => 
+              vendor.id === payment.vendorId 
+                ? { ...vendor, balance: vendor.balance - payment.amount }
+                : vendor
+            );
+          }
+
+          return {
+            balancePayments: [...state.balancePayments, newPayment],
+            customers: updatedCustomers,
+            vendors: updatedVendors,
           };
         });
       },
@@ -196,12 +269,14 @@ export const useInventoryStore = create<InventoryStore>()(
                 id: '1',
                 name: 'John Doe',
                 phoneNo: '+1234567890',
+                balance: 0,
                 createdAt: new Date(),
               },
               {
                 id: '2',
                 name: 'Jane Smith',
                 phoneNo: '+0987654321',
+                balance: 0,
                 createdAt: new Date(),
               },
             ],
@@ -210,12 +285,14 @@ export const useInventoryStore = create<InventoryStore>()(
                 id: '1',
                 name: 'Tech Supplies Inc',
                 phoneNo: '+1122334455',
+                balance: 0,
                 createdAt: new Date(),
               },
               {
                 id: '2',
                 name: 'Hardware Solutions',
                 phoneNo: '+5544332211',
+                balance: 0,
                 createdAt: new Date(),
               },
             ],

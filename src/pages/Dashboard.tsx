@@ -6,9 +6,10 @@ import { Plus, Package, Users, Truck, TrendingUp, Download } from 'lucide-react'
 import { ProductSection } from '@/components/inventory/ProductSection';
 import { CustomerSection } from '@/components/inventory/CustomerSection';
 import { VendorSection } from '@/components/inventory/VendorSection';
-import { TransactionForm } from '@/components/inventory/TransactionForm';
+import { BatchTransactionForm } from '@/components/inventory/BatchTransactionForm';
 import { TransactionHistory } from '@/components/inventory/TransactionHistory';
 import { OverviewDashboard } from '@/components/inventory/OverviewDashboard';
+import { BalanceManager } from '@/components/inventory/BalanceManager';
 import { useInventoryStore } from '@/store/inventoryStore';
 
 const Dashboard = () => {
@@ -32,9 +33,19 @@ const Dashboard = () => {
       case 'products':
         return <ProductSection />;
       case 'customers':
-        return <CustomerSection />;
+        return (
+          <div className="space-y-8">
+            <CustomerSection />
+            <BalanceManager type="customer" />
+          </div>
+        );
       case 'vendors':
-        return <VendorSection />;
+        return (
+          <div className="space-y-8">
+            <VendorSection />
+            <BalanceManager type="vendor" />
+          </div>
+        );
       case 'transactions':
         return <TransactionHistory />;
       default:
@@ -102,7 +113,7 @@ const Dashboard = () => {
 
       {/* Transaction Form Modal */}
       {showTransactionForm && (
-        <TransactionForm
+        <BatchTransactionForm
           type={transactionType}
           onClose={() => setShowTransactionForm(false)}
         />

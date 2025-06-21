@@ -28,22 +28,26 @@ export const OverviewDashboard = () => {
     totalProducts: products.length,
     totalCustomers: customers.length,
     totalVendors: vendors.length,
-    lowStockProducts: products.filter(p => p.quantity <= 10).length,
+    lowStockProducts: products.filter(p => p.quantity > 0 && p.quantity <= 10).length,
     outOfStockProducts: products.filter(p => p.quantity === 0).length,
     
     // Current month sales
-    currentMonthSales: currentMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalPrice, 0),
-    currentMonthPurchases: currentMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalPrice, 0),
+    currentMonthSales: currentMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
+    currentMonthPurchases: currentMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
     currentMonthTransactions: currentMonthTransactions.length,
     
     // Previous month for comparison
-    previousMonthSales: previousMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalPrice, 0),
-    previousMonthPurchases: previousMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalPrice, 0),
+    previousMonthSales: previousMonthTransactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
+    previousMonthPurchases: previousMonthTransactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
     
     // All time stats
-    totalSales: transactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalPrice, 0),
-    totalPurchases: transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalPrice, 0),
+    totalSales: transactions.filter(t => t.type === 'sale').reduce((sum, t) => sum + t.totalAmount, 0),
+    totalPurchases: transactions.filter(t => t.type === 'purchase').reduce((sum, t) => sum + t.totalAmount, 0),
     totalTransactions: transactions.length,
+
+    // Balance stats
+    totalCustomerBalance: customers.reduce((sum, c) => sum + c.balance, 0),
+    totalVendorBalance: vendors.reduce((sum, v) => sum + v.balance, 0),
   };
 
   // Calculate growth percentages
@@ -59,7 +63,9 @@ export const OverviewDashboard = () => {
   const productSales = currentMonthTransactions
     .filter(t => t.type === 'sale')
     .reduce((acc, t) => {
-      acc[t.productName] = (acc[t.productName] || 0) + t.quantity;
+      t.items.forEach(item => {
+        acc[item.productName] = (acc[item.productName] || 0) + item.quantity;
+      });
       return acc;
     }, {} as Record<string, number>);
 
@@ -95,7 +101,7 @@ export const OverviewDashboard = () => {
             <DollarSign className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.currentMonthSales.toFixed(2)}</div>
+            <div className="text-2xl font-bold">PKR {stats.currentMonthSales.toFixed(2)}</div>
             <p className="text-xs opacity-80 flex items-center">
               {salesGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -113,7 +119,7 @@ export const OverviewDashboard = () => {
             <Truck className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">${stats.currentMonthPurchases.toFixed(2)}</div>
+            <div className="text-2xl font-bold">PKR {stats.currentMonthPurchases.toFixed(2)}</div>
             <p className="text-xs opacity-80 flex items-center">
               {purchaseGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -132,10 +138,39 @@ export const OverviewDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${(stats.currentMonthSales - stats.currentMonthPurchases).toFixed(2)}
+              PKR {(stats.currentMonthSales - stats.currentMonthPurchases).toFixed(2)}
             </div>
             <p className="text-xs opacity-80">
               Gross profit this month
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Balance Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="bg-gradient-to-r from-red-500 to-red-600 text-white">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Customer Outstanding</CardTitle>
+            <Users className="h-4 w-4" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">PKR {stats.totalCustomerBalance.toFixed(2)}</div>
+            <p className="text-xs opacity-80">
+              Amount customers owe us
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-r from-yellow-500 to-yellow-600 text-white">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Vendor Outstanding</CardTitle>
+            <Truck className="h-4 w-4" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">PKR {stats.totalVendorBalance.toFixed(2)}</div>
+            <p className="text-xs opacity-80">
+              Amount we owe vendors
             </p>
           </CardContent>
         </Card>
@@ -201,11 +236,11 @@ export const OverviewDashboard = () => {
           <CardContent className="space-y-3">
             <div className="flex justify-between">
               <span>Total Sales:</span>
-              <span className="font-bold text-green-600">${stats.totalSales.toFixed(2)}</span>
+              <span className="font-bold text-green-600">PKR {stats.totalSales.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span>Total Purchases:</span>
-              <span className="font-bold text-blue-600">${stats.totalPurchases.toFixed(2)}</span>
+              <span className="font-bold text-blue-600">PKR {stats.totalPurchases.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span>All Transactions:</span>
@@ -252,7 +287,9 @@ export const OverviewDashboard = () => {
                 {recentTransactions.map((transaction) => (
                   <div key={transaction.id} className="flex items-center justify-between border-b pb-2">
                     <div>
-                      <p className="font-medium">{transaction.productName}</p>
+                      <p className="font-medium">
+                        {transaction.items.length} item{transaction.items.length > 1 ? 's' : ''}
+                      </p>
                       <p className="text-sm text-gray-500">
                         {new Date(transaction.date).toLocaleDateString()} • 
                         <span className={`ml-1 ${transaction.type === 'sale' ? 'text-green-600' : 'text-blue-600'}`}>
@@ -261,8 +298,10 @@ export const OverviewDashboard = () => {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold">${transaction.totalPrice.toFixed(2)}</p>
-                      <p className="text-sm text-gray-500">{transaction.quantity} units</p>
+                      <p className="font-bold">PKR {transaction.totalAmount.toFixed(2)}</p>
+                      <p className="text-sm text-gray-500">
+                        {transaction.items.reduce((sum, item) => sum + item.quantity, 0)} units
+                      </p>
                     </div>
                   </div>
                 ))}
