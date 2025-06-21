@@ -23,7 +23,9 @@ export const TransactionHistory = () => {
 
   const filteredTransactions = transactions
     .filter(t => {
-      const matchesSearch = t.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = t.items.some(item => 
+        item.productName.toLowerCase().includes(searchTerm.toLowerCase())
+      ) ||
         (t.customerId && customers.find(c => c.id === t.customerId)?.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (t.vendorId && vendors.find(v => v.id === t.vendorId)?.name.toLowerCase().includes(searchTerm.toLowerCase()));
       
@@ -49,19 +51,22 @@ export const TransactionHistory = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const exportTransactions = (format: 'excel' | 'pdf') => {
-    const data = filteredTransactions.map(t => {
+    const data: any[] = [];
+    filteredTransactions.forEach(t => {
       const customer = t.customerId ? customers.find(c => c.id === t.customerId) : null;
       const vendor = t.vendorId ? vendors.find(v => v.id === t.vendorId) : null;
       
-      return {
-        Date: new Date(t.date).toLocaleDateString(),
-        Type: t.type === 'sale' ? 'Sale' : 'Purchase',
-        'Customer/Vendor': customer?.name || vendor?.name || 'N/A',
-        Product: t.productName,
-        Quantity: t.quantity,
-        'Unit Price': `$${t.price.toFixed(2)}`,
-        'Total Price': `$${t.totalPrice.toFixed(2)}`
-      };
+      t.items.forEach(item => {
+        data.push({
+          Date: new Date(t.date).toLocaleDateString(),
+          Type: t.type === 'sale' ? 'Sale' : 'Purchase',
+          'Customer/Vendor': customer?.name || vendor?.name || 'N/A',
+          Product: item.productName,
+          Quantity: item.quantity,
+          'Unit Price': `PKR ${item.price.toFixed(2)}`,
+          'Total Price': `PKR ${item.totalPrice.toFixed(2)}`
+        });
+      });
     });
 
     if (format === 'excel') {
@@ -74,7 +79,7 @@ export const TransactionHistory = () => {
   const getTotalValue = (type?: 'sale' | 'purchase') => {
     return filteredTransactions
       .filter(t => !type || t.type === type)
-      .reduce((sum, t) => sum + t.totalPrice, 0);
+      .reduce((sum, t) => sum + t.totalAmount, 0);
   };
 
   return (
@@ -107,7 +112,7 @@ export const TransactionHistory = () => {
               <div>
                 <p className="text-sm text-green-600">Total Sales</p>
                 <p className="text-2xl font-bold text-green-700">
-                  ${getTotalValue('sale').toFixed(2)}
+                  PKR {getTotalValue('sale').toFixed(2)}
                 </p>
               </div>
               <ShoppingCart className="h-8 w-8 text-green-600" />
@@ -121,7 +126,7 @@ export const TransactionHistory = () => {
               <div>
                 <p className="text-sm text-blue-600">Total Purchases</p>
                 <p className="text-2xl font-bold text-blue-700">
-                  ${getTotalValue('purchase').toFixed(2)}
+                  PKR {getTotalValue('purchase').toFixed(2)}
                 </p>
               </div>
               <Package className="h-8 w-8 text-blue-600" />
@@ -218,9 +223,7 @@ export const TransactionHistory = () => {
                   <th className="text-left p-3">Date</th>
                   <th className="text-left p-3">Type</th>
                   <th className="text-left p-3">Customer/Vendor</th>
-                  <th className="text-left p-3">Product</th>
-                  <th className="text-left p-3">Qty</th>
-                  <th className="text-left p-3">Unit Price</th>
+                  <th className="text-left p-3">Items</th>
                   <th className="text-left p-3">Total</th>
                 </tr>
               </thead>
@@ -242,10 +245,16 @@ export const TransactionHistory = () => {
                         </span>
                       </td>
                       <td className="p-3">{customer?.name || vendor?.name || 'N/A'}</td>
-                      <td className="p-3">{transaction.productName}</td>
-                      <td className="p-3">{transaction.quantity}</td>
-                      <td className="p-3">${transaction.price.toFixed(2)}</td>
-                      <td className="p-3 font-semibold">${transaction.totalPrice.toFixed(2)}</td>
+                      <td className="p-3">
+                        <div className="space-y-1">
+                          {transaction.items.map((item, index) => (
+                            <div key={index} className="text-sm">
+                              {item.productName} x {item.quantity} @ PKR {item.price.toFixed(2)}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="p-3 font-semibold">PKR {transaction.totalAmount.toFixed(2)}</td>
                     </tr>
                   );
                 })}

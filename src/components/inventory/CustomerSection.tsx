@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, Edit, Trash, Users, FileDown, User } from 'lucide-react';
+import { Plus, Edit, Trash, Users, FileDown, User, Search } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ExportUtils } from '@/utils/exportUtils';
@@ -14,6 +14,7 @@ export const CustomerSection = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<string | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     phoneNo: '',
@@ -58,10 +59,6 @@ export const CustomerSection = () => {
   const getCustomerTransactions = (customerId: string) => {
     return transactions
       .filter(t => t.customerId === customerId && t.type === 'sale')
-      .map(t => ({
-        ...t,
-        productName: products.find(p => p.id === t.productId)?.name || t.productName
-      }))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
@@ -71,13 +68,18 @@ export const CustomerSection = () => {
     
     if (!customer) return;
 
-    const data = customerTransactions.map(t => ({
-      Date: new Date(t.date).toLocaleDateString(),
-      Product: t.productName,
-      Quantity: t.quantity,
-      Price: `$${t.price.toFixed(2)}`,
-      'Total Price': `$${t.totalPrice.toFixed(2)}`
-    }));
+    const data: any[] = [];
+    customerTransactions.forEach(t => {
+      t.items.forEach(item => {
+        data.push({
+          Date: new Date(t.date).toLocaleDateString(),
+          Product: item.productName,
+          Quantity: item.quantity,
+          Price: `PKR ${item.price.toFixed(2)}`,
+          'Total Price': `PKR ${item.totalPrice.toFixed(2)}`
+        });
+      });
+    });
 
     if (format === 'excel') {
       ExportUtils.exportToExcel(data, `${customer.name}_Purchase_History`);
@@ -85,6 +87,11 @@ export const CustomerSection = () => {
       ExportUtils.exportToPDF(data, `${customer.name} - Purchase History`);
     }
   };
+
+  const filteredCustomers = customers.filter(customer =>
+    customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    customer.phoneNo.includes(searchTerm)
+  );
 
   return (
     <div className="space-y-6">
@@ -137,11 +144,32 @@ export const CustomerSection = () => {
         </Dialog>
       </div>
 
+      {/* Search Bar */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Search className="h-5 w-5 mr-2" />
+            Search Customers
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="relative">
+            <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+            <Input
+              placeholder="Search by name or phone number..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Customers List */}
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Customer List</h3>
-          {customers.map((customer) => (
+          {filteredCustomers.map((customer) => (
             <Card key={customer.id} className="hover:shadow-lg transition-shadow">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <div className="flex items-center space-x-2">
@@ -177,6 +205,9 @@ export const CustomerSection = () => {
                 <p className="text-sm text-gray-600">Phone: {customer.phoneNo}</p>
                 <p className="text-sm text-gray-600">
                   Purchases: {getCustomerTransactions(customer.id).length}
+                </p>
+                <p className={`text-sm font-medium ${customer.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                  Balance: PKR {customer.balance.toFixed(2)}
                 </p>
               </CardContent>
             </Card>
@@ -216,16 +247,20 @@ export const CustomerSection = () => {
               <CardContent>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {getCustomerTransactions(selectedCustomer).map((transaction) => (
-                    <div key={transaction.id} className="flex justify-between items-center p-3 bg-gray-50 rounded">
-                      <div>
-                        <p className="font-medium">{transaction.productName}</p>
+                    <div key={transaction.id} className="border rounded p-3 bg-gray-50">
+                      <div className="flex justify-between items-center mb-2">
                         <p className="text-sm text-gray-600">
                           {new Date(transaction.date).toLocaleDateString()}
                         </p>
+                        <p className="font-medium">PKR {transaction.totalAmount.toFixed(2)}</p>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium">Qty: {transaction.quantity}</p>
-                        <p className="text-sm text-gray-600">${transaction.totalPrice.toFixed(2)}</p>
+                      <div className="space-y-1">
+                        {transaction.items.map((item, index) => (
+                          <div key={index} className="flex justify-between text-sm">
+                            <span>{item.productName} x {item.quantity}</span>
+                            <span>PKR {item.totalPrice.toFixed(2)}</span>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -246,11 +281,16 @@ export const CustomerSection = () => {
         </div>
       </div>
 
-      {customers.length === 0 && (
+      {filteredCustomers.length === 0 && (
         <Card className="text-center py-12">
           <CardContent>
             <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No customers found. Add your first customer to get started.</p>
+            <p className="text-gray-600">
+              {customers.length === 0 
+                ? "No customers found. Add your first customer to get started."
+                : "No customers match your search criteria."
+              }
+            </p>
           </CardContent>
         </Card>
       )}

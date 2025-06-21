@@ -94,13 +94,16 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
 
     addTransaction({
       type,
-      productId: formData.productId,
-      productName: selectedProduct?.name || '',
       customerId: type === 'sale' ? formData.customerId : undefined,
       vendorId: type === 'purchase' ? formData.vendorId : undefined,
-      quantity,
-      price,
-      totalPrice,
+      items: [{
+        productId: formData.productId,
+        productName: selectedProduct?.name || '',
+        quantity,
+        price,
+        totalPrice,
+      }],
+      totalAmount: totalPrice,
       date: new Date(),
     });
 
@@ -270,7 +273,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
 
             {/* Price */}
             <div>
-              <Label htmlFor="price">Unit Price ($)</Label>
+              <Label htmlFor="price">Unit Price (PKR)</Label>
               <Input
                 id="price"
                 type="number"
@@ -289,7 +292,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose 
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Total Price:</span>
                   <span className="text-lg font-bold text-blue-600">
-                    ${totalPrice.toFixed(2)}
+                    PKR {totalPrice.toFixed(2)}
                   </span>
                 </div>
               </div>

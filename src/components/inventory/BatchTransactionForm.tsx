@@ -53,14 +53,23 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   const updateItem = (id: string, field: keyof TransactionItem, value: any) => {
     setItems(items.map(item => {
       if (item.id === id) {
-        const updatedItem = { ...item, [field]: value };
+        const updatedItem = { ...item };
+        
         if (field === 'productId') {
           const product = products.find(p => p.id === value);
+          updatedItem.productId = value;
           updatedItem.productName = product?.name || '';
+        } else if (field === 'quantity') {
+          updatedItem.quantity = Number(value);
+        } else if (field === 'price') {
+          updatedItem.price = Number(value);
         }
+        
+        // Recalculate total price when quantity or price changes
         if (field === 'quantity' || field === 'price') {
           updatedItem.totalPrice = updatedItem.quantity * updatedItem.price;
         }
+        
         return updatedItem;
       }
       return item;
@@ -412,7 +421,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           type="number"
           min="1"
           value={item.quantity}
-          onChange={(e) => onUpdate(item.id, 'quantity', parseInt(e.target.value) || 0)}
+          onChange={(e) => onUpdate(item.id, 'quantity', e.target.value)}
           className="w-20"
           size="sm"
         />
@@ -423,7 +432,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           step="0.01"
           min="0"
           value={item.price}
-          onChange={(e) => onUpdate(item.id, 'price', parseFloat(e.target.value) || 0)}
+          onChange={(e) => onUpdate(item.id, 'price', e.target.value)}
           className="w-24"
           size="sm"
         />
