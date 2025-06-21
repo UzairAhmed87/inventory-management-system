@@ -50,19 +50,19 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
     setItems(items.filter(item => item.id !== id));
   };
 
-  const updateItem = (id: string, field: keyof TransactionItem, value: any) => {
+  const updateItem = (id: string, field: keyof TransactionItem, value: string | number) => {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item };
         
         if (field === 'productId') {
           const product = products.find(p => p.id === value);
-          updatedItem.productId = value;
+          updatedItem.productId = value as string;
           updatedItem.productName = product?.name || '';
         } else if (field === 'quantity') {
-          updatedItem.quantity = Number(value) || 0;
+          updatedItem.quantity = typeof value === 'string' ? Number(value) : value;
         } else if (field === 'price') {
-          updatedItem.price = Number(value) || 0;
+          updatedItem.price = typeof value === 'string' ? Number(value) : value;
         }
         
         // Recalculate total price when quantity or price changes
@@ -356,7 +356,7 @@ interface TransactionItemRowProps {
   item: TransactionItem;
   products: any[];
   type: 'sale' | 'purchase';
-  onUpdate: (id: string, field: keyof TransactionItem, value: any) => void;
+  onUpdate: (id: string, field: keyof TransactionItem, value: string | number) => void;
   onRemove: (id: string) => void;
   canRemove: boolean;
 }
@@ -421,7 +421,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           type="number"
           min="1"
           value={item.quantity.toString()}
-          onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
+          onChange={(e) => onUpdate(item.id, 'quantity', e.target.value)}
           className="w-20"
           size="sm"
         />
@@ -432,7 +432,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           step="0.01"
           min="0"
           value={item.price.toString()}
-          onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
+          onChange={(e) => onUpdate(item.id, 'price', e.target.value)}
           className="w-24"
           size="sm"
         />
