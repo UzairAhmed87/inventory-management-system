@@ -60,9 +60,9 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
           updatedItem.productId = value;
           updatedItem.productName = product?.name || '';
         } else if (field === 'quantity') {
-          updatedItem.quantity = Number(value);
+          updatedItem.quantity = Number(value) || 0;
         } else if (field === 'price') {
-          updatedItem.price = Number(value);
+          updatedItem.price = Number(value) || 0;
         }
         
         // Recalculate total price when quantity or price changes
@@ -420,7 +420,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
         <Input
           type="number"
           min="1"
-          value={item.quantity}
+          value={item.quantity || ''}
           onChange={(e) => onUpdate(item.id, 'quantity', e.target.value)}
           className="w-20"
           size="sm"
@@ -431,7 +431,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           type="number"
           step="0.01"
           min="0"
-          value={item.price}
+          value={item.price || ''}
           onChange={(e) => onUpdate(item.id, 'price', e.target.value)}
           className="w-24"
           size="sm"
