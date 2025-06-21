@@ -15,29 +15,26 @@ export const ProductSection = () => {
   const [formData, setFormData] = useState({
     name: '',
     quantity: '',
-    price: '',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.quantity || !formData.price) return;
+    if (!formData.name || !formData.quantity) return;
 
     if (editingProduct) {
       updateProduct(editingProduct, {
         name: formData.name,
         quantity: parseInt(formData.quantity),
-        price: parseFloat(formData.price),
       });
       setEditingProduct(null);
     } else {
       addProduct({
         name: formData.name,
         quantity: parseInt(formData.quantity),
-        price: parseFloat(formData.price),
       });
     }
 
-    setFormData({ name: '', quantity: '', price: '' });
+    setFormData({ name: '', quantity: '' });
     setShowForm(false);
   };
 
@@ -46,7 +43,6 @@ export const ProductSection = () => {
     setFormData({
       name: product.name,
       quantity: product.quantity.toString(),
-      price: product.price.toString(),
     });
     setShowForm(true);
   };
@@ -58,7 +54,7 @@ export const ProductSection = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', quantity: '', price: '' });
+    setFormData({ name: '', quantity: '' });
     setEditingProduct(null);
     setShowForm(false);
   };
@@ -99,18 +95,6 @@ export const ProductSection = () => {
                   value={formData.quantity}
                   onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
                   placeholder="Enter quantity"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="price">Price</Label>
-                <Input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                  placeholder="Enter price"
                   required
                 />
               </div>
@@ -160,10 +144,6 @@ export const ProductSection = () => {
                   <span className={`font-semibold ${product.quantity <= 10 ? 'text-red-600' : 'text-green-600'}`}>
                     {product.quantity}
                   </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Price:</span>
-                  <span className="font-semibold text-blue-600">${product.price.toFixed(2)}</span>
                 </div>
                 {product.quantity <= 10 && (
                   <div className="bg-red-100 text-red-700 text-xs px-2 py-1 rounded">
