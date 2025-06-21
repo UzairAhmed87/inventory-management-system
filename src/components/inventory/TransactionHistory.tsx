@@ -62,9 +62,9 @@ export const TransactionHistory = () => {
           Type: t.type === 'sale' ? 'Sale' : 'Purchase',
           'Customer/Vendor': customer?.name || vendor?.name || 'N/A',
           Product: item.productName,
-          Quantity: item.quantity,
-          'Unit Price': `PKR ${item.price.toFixed(2)}`,
-          'Total Price': `PKR ${item.totalPrice.toFixed(2)}`
+          Quantity: item.quantity || 0,
+          'Unit Price': `PKR ${(item.price || 0).toFixed(2)}`,
+          'Total Price': `PKR ${(item.totalPrice || 0).toFixed(2)}`
         });
       });
     });
@@ -79,7 +79,35 @@ export const TransactionHistory = () => {
   const getTotalValue = (type?: 'sale' | 'purchase') => {
     return filteredTransactions
       .filter(t => !type || t.type === type)
-      .reduce((sum, t) => sum + t.totalAmount, 0);
+      .reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+  };
+
+  const exportTransactionBill = (transaction: any, format: 'excel' | 'pdf') => {
+    const customer = transaction.customerId ? customers.find(c => c.id === transaction.customerId) : null;
+    const vendor = transaction.vendorId ? vendors.find(v => v.id === transaction.vendorId) : null;
+    
+    const data = transaction.items.map((item: any) => ({
+      Product: item.productName,
+      Quantity: item.quantity || 0,
+      'Unit Price': `PKR ${(item.price || 0).toFixed(2)}`,
+      'Total Price': `PKR ${(item.totalPrice || 0).toFixed(2)}`
+    }));
+
+    // Add total row
+    data.push({
+      Product: 'TOTAL',
+      Quantity: '',
+      'Unit Price': '',
+      'Total Price': `PKR ${(transaction.totalAmount || 0).toFixed(2)}`
+    });
+
+    const title = `${transaction.type === 'sale' ? 'Sale' : 'Purchase'} Bill - ${customer?.name || vendor?.name || 'N/A'} - ${new Date(transaction.date).toLocaleDateString()}`;
+
+    if (format === 'excel') {
+      ExportUtils.exportToExcel(data, `${transaction.type}_bill_${Date.now()}`);
+    } else {
+      ExportUtils.exportToPDF(data, title);
+    }
   };
 
   return (
@@ -90,6 +118,7 @@ export const TransactionHistory = () => {
           <Button
             variant="outline"
             onClick={() => exportTransactions('excel')}
+            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
           >
             <FileDown className="h-4 w-4 mr-2" />
             Export Excel
@@ -97,6 +126,7 @@ export const TransactionHistory = () => {
           <Button
             variant="outline"
             onClick={() => exportTransactions('pdf')}
+            className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
           >
             <FileDown className="h-4 w-4 mr-2" />
             Export PDF
@@ -106,12 +136,12 @@ export const TransactionHistory = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-green-50 border-green-200">
-          <CardContent className="p-4">
+        <Card className="bg-green-50 border-green-200 shadow-sm">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Total Sales</p>
-                <p className="text-2xl font-bold text-green-700">
+                <p className="text-sm font-medium text-green-600">Total Sales</p>
+                <p className="text-3xl font-bold text-green-700">
                   PKR {getTotalValue('sale').toFixed(2)}
                 </p>
               </div>
@@ -120,12 +150,12 @@ export const TransactionHistory = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="p-4">
+        <Card className="bg-blue-50 border-blue-200 shadow-sm">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Total Purchases</p>
-                <p className="text-2xl font-bold text-blue-700">
+                <p className="text-sm font-medium text-blue-600">Total Purchases</p>
+                <p className="text-3xl font-bold text-blue-700">
                   PKR {getTotalValue('purchase').toFixed(2)}
                 </p>
               </div>
@@ -134,12 +164,12 @@ export const TransactionHistory = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-gray-50 border-gray-200">
-          <CardContent className="p-4">
+        <Card className="bg-gray-50 border-gray-200 shadow-sm">
+          <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Transactions</p>
-                <p className="text-2xl font-bold text-gray-700">
+                <p className="text-sm font-medium text-gray-600">Total Transactions</p>
+                <p className="text-3xl font-bold text-gray-700">
                   {filteredTransactions.length}
                 </p>
               </div>
@@ -150,9 +180,9 @@ export const TransactionHistory = () => {
       </div>
 
       {/* Filters */}
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Filters</CardTitle>
+          <CardTitle className="text-lg">Filters</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -211,20 +241,21 @@ export const TransactionHistory = () => {
       </Card>
 
       {/* Transactions Table */}
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Transactions ({filteredTransactions.length})</CardTitle>
+          <CardTitle className="text-lg">Transactions ({filteredTransactions.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b">
-                  <th className="text-left p-3">Date</th>
-                  <th className="text-left p-3">Type</th>
-                  <th className="text-left p-3">Customer/Vendor</th>
-                  <th className="text-left p-3">Items</th>
-                  <th className="text-left p-3">Total</th>
+                <tr className="border-b bg-gray-50">
+                  <th className="text-left p-4 font-semibold">Date</th>
+                  <th className="text-left p-4 font-semibold">Type</th>
+                  <th className="text-left p-4 font-semibold">Customer/Vendor</th>
+                  <th className="text-left p-4 font-semibold">Items</th>
+                  <th className="text-left p-4 font-semibold">Total</th>
+                  <th className="text-left p-4 font-semibold">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -233,10 +264,10 @@ export const TransactionHistory = () => {
                   const vendor = transaction.vendorId ? vendors.find(v => v.id === transaction.vendorId) : null;
                   
                   return (
-                    <tr key={transaction.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">{new Date(transaction.date).toLocaleDateString()}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-1 rounded text-xs ${
+                    <tr key={transaction.id} className="border-b hover:bg-gray-50 transition-colors">
+                      <td className="p-4">{new Date(transaction.date).toLocaleDateString()}</td>
+                      <td className="p-4">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           transaction.type === 'sale' 
                             ? 'bg-green-100 text-green-700' 
                             : 'bg-blue-100 text-blue-700'
@@ -244,25 +275,48 @@ export const TransactionHistory = () => {
                           {transaction.type === 'sale' ? 'Sale' : 'Purchase'}
                         </span>
                       </td>
-                      <td className="p-3">{customer?.name || vendor?.name || 'N/A'}</td>
-                      <td className="p-3">
+                      <td className="p-4 font-medium">{customer?.name || vendor?.name || 'N/A'}</td>
+                      <td className="p-4">
                         <div className="space-y-1">
                           {transaction.items.map((item, index) => (
                             <div key={index} className="text-sm">
-                              {item.productName} x {item.quantity} @ PKR {item.price.toFixed(2)}
+                              {item.productName} x {item.quantity || 0} @ PKR {(item.price || 0).toFixed(2)}
                             </div>
                           ))}
                         </div>
                       </td>
-                      <td className="p-3 font-semibold">PKR {transaction.totalAmount.toFixed(2)}</td>
+                      <td className="p-4 font-bold text-lg">PKR {(transaction.totalAmount || 0).toFixed(2)}</td>
+                      <td className="p-4">
+                        <div className="flex space-x-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => exportTransactionBill(transaction, 'excel')}
+                            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                          >
+                            <FileDown className="h-3 w-3 mr-1" />
+                            Excel
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => exportTransactionBill(transaction, 'pdf')}
+                            className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                          >
+                            <FileDown className="h-3 w-3 mr-1" />
+                            PDF
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
             {filteredTransactions.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                No transactions found matching your criteria
+              <div className="text-center py-12 text-gray-500">
+                <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg">No transactions found matching your criteria</p>
               </div>
             )}
           </div>
