@@ -6,11 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { X, ShoppingCart, Package, Check, ChevronsUpDown, Plus, Trash, FileDown } from 'lucide-react';
+import { X, ShoppingCart, Package, Check, ChevronsUpDown, Plus, Trash } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { ExportUtils } from '@/utils/exportUtils';
+import { BillSuccessDialog } from './BillSuccessDialog';
 
 interface BatchTransactionFormProps {
   type: 'sale' | 'purchase';
@@ -33,8 +33,24 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   const [items, setItems] = useState<TransactionItem[]>([]);
   const [openCustomer, setOpenCustomer] = useState(false);
   const [openVendor, setOpenVendor] = useState(false);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [completedTransaction, setCompletedTransaction] = useState<any>(null);
 
   const addItem = () => {
+    // Only add if all existing items are properly filled
+    const hasIncompleteItems = items.some(item => 
+      !item.productId || item.quantity <= 0 || item.price <= 0
+    );
+    
+    if (hasIncompleteItems && items.length > 0) {
+      toast({
+        title: "Complete Current Items",
+        description: "Please fill in all details for existing items before adding new ones",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const newItem: TransactionItem = {
       id: crypto.randomUUID(),
       productId: '',
@@ -83,10 +99,15 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (items.length === 0) {
+    // Filter out empty/incomplete items
+    const validItems = items.filter(item => 
+      item.productId && item.quantity > 0 && item.price > 0
+    );
+
+    if (validItems.length === 0) {
       toast({
         title: "Error",
-        description: "Please add at least one item",
+        description: "Please add at least one valid item",
         variant: "destructive",
       });
       return;
@@ -110,19 +131,9 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
       return;
     }
 
-    // Validate all items
-    for (const item of items) {
-      if (!item.productId || item.quantity <= 0 || item.price <= 0) {
-        toast({
-          title: "Error",
-          description: "Please fill in all item details correctly",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Check stock for sales
-      if (type === 'sale') {
+    // Check stock for sales
+    if (type === 'sale') {
+      for (const item of validItems) {
         const product = products.find(p => p.id === item.productId);
         if (product && product.quantity < item.quantity) {
           toast({
@@ -135,47 +146,40 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
       }
     }
 
-    addTransaction({
+    const transaction = {
       type,
       customerId: type === 'sale' ? customerId : undefined,
       vendorId: type === 'purchase' ? vendorId : undefined,
-      items: items.map(({ id, ...item }) => item),
-      totalAmount: getTotalAmount(),
+      items: validItems.map(({ id, ...item }) => item),
+      totalAmount: validItems.reduce((sum, item) => sum + item.totalPrice, 0),
       date: new Date(),
+    };
+
+    addTransaction(transaction);
+
+    // Get the latest transaction (the one we just added) for the success dialog
+    const customer = type === 'sale' ? customers.find(c => c.id === customerId) : undefined;
+    const vendor = type === 'purchase' ? vendors.find(v => v.id === vendorId) : undefined;
+    
+    // Create transaction object with invoice number for success dialog
+    const transactionWithInvoice = {
+      ...transaction,
+      invoiceNumber: `${type === 'sale' ? 'INV' : 'PUR'}${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}${new Date().getDate().toString().padStart(2, '0')}001`, // This will be generated properly in store
+      previousBalance: customer?.balance || vendor?.balance || 0,
+      newBalance: (customer?.balance || vendor?.balance || 0) + transaction.totalAmount,
+    };
+
+    setCompletedTransaction({
+      ...transactionWithInvoice,
+      customer,
+      vendor
     });
+    setShowSuccessDialog(true);
 
     toast({
       title: "Success",
-      description: `${type === 'sale' ? 'Sale' : 'Purchase'} transaction added successfully`,
+      description: `${type === 'sale' ? 'Sale' : 'Purchase'} transaction completed successfully`,
     });
-
-    onClose();
-  };
-
-  const exportTransaction = (format: 'excel' | 'pdf') => {
-    const customer = type === 'sale' ? customers.find(c => c.id === customerId) : null;
-    const vendor = type === 'purchase' ? vendors.find(v => v.id === vendorId) : null;
-    
-    const data = items.map((item, index) => ({
-      'S.No': index + 1,
-      'Product Name': item.productName,
-      'Quantity': item.quantity,
-      'Unit Price (PKR)': item.price.toFixed(2),
-      'Total Price (PKR)': item.totalPrice.toFixed(2),
-    }));
-
-    const summary = {
-      'Transaction Type': type === 'sale' ? 'Sale' : 'Purchase',
-      [type === 'sale' ? 'Customer' : 'Vendor']: customer?.name || vendor?.name || 'N/A',
-      'Date': new Date().toLocaleDateString(),
-      'Total Amount (PKR)': getTotalAmount().toFixed(2),
-    };
-
-    if (format === 'excel') {
-      ExportUtils.exportToExcel([...data, {}, summary], `${type}_transaction_${new Date().toISOString().split('T')[0]}`);
-    } else {
-      ExportUtils.exportToPDF([...data, {}, summary], `${type === 'sale' ? 'Sale' : 'Purchase'} Transaction`);
-    }
   };
 
   useEffect(() => {
@@ -185,170 +189,180 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div className="flex items-center space-x-2">
-            {type === 'sale' ? (
-              <ShoppingCart className="h-5 w-5 text-green-600" />
-            ) : (
-              <Package className="h-5 w-5 text-blue-600" />
-            )}
-            <CardTitle>
-              {type === 'sale' ? 'New Sale Transaction' : 'New Purchase Transaction'}
-            </CardTitle>
-          </div>
-          <div className="flex space-x-2">
-            <Button variant="outline" size="sm" onClick={() => exportTransaction('excel')}>
-              <FileDown className="h-4 w-4 mr-2" />
-              Excel
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white shadow-2xl">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
+            <div className="flex items-center space-x-3">
+              {type === 'sale' ? (
+                <ShoppingCart className="h-6 w-6" />
+              ) : (
+                <Package className="h-6 w-6" />
+              )}
+              <CardTitle className="text-xl">
+                {type === 'sale' ? 'New Sale Transaction' : 'New Purchase Transaction'}
+              </CardTitle>
+            </div>
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white/20">
+              <X className="h-5 w-5" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => exportTransaction('pdf')}>
-              <FileDown className="h-4 w-4 mr-2" />
-              PDF
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Customer/Vendor Selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>
-                  {type === 'sale' ? 'Customer' : 'Vendor'}
-                </Label>
-                <Popover open={type === 'sale' ? openCustomer : openVendor} onOpenChange={type === 'sale' ? setOpenCustomer : setOpenVendor}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={type === 'sale' ? openCustomer : openVendor}
-                      className="w-full justify-between"
-                    >
-                      {(type === 'sale' ? customerId : vendorId) ? (
-                        <span>
-                          {type === 'sale' 
-                            ? customers.find(c => c.id === customerId)?.name
-                            : vendors.find(v => v.id === vendorId)?.name
-                          }
-                        </span>
-                      ) : (
-                        <span>Select {type === 'sale' ? 'customer' : 'vendor'}...</span>
-                      )}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+          </CardHeader>
+          <CardContent className="p-6">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Customer/Vendor Selection */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-semibold text-gray-700">
+                      {type === 'sale' ? 'Customer' : 'Vendor'}
+                    </Label>
+                    <Popover open={type === 'sale' ? openCustomer : openVendor} onOpenChange={type === 'sale' ? setOpenCustomer : setOpenVendor}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={type === 'sale' ? openCustomer : openVendor}
+                          className="w-full justify-between mt-1 h-10"
+                        >
+                          {(type === 'sale' ? customerId : vendorId) ? (
+                            <span>
+                              {type === 'sale' 
+                                ? customers.find(c => c.id === customerId)?.name
+                                : vendors.find(v => v.id === vendorId)?.name
+                              }
+                            </span>
+                          ) : (
+                            <span className="text-gray-500">Select {type === 'sale' ? 'customer' : 'vendor'}...</span>
+                          )}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0 z-[60]">
+                        <Command>
+                          <CommandInput placeholder={`Search ${type === 'sale' ? 'customer' : 'vendor'}...`} />
+                          <CommandList>
+                            <CommandEmpty>No {type === 'sale' ? 'customer' : 'vendor'} found.</CommandEmpty>
+                            <CommandGroup>
+                              {(type === 'sale' ? customers : vendors).map((item) => (
+                                <CommandItem
+                                  key={item.id}
+                                  value={item.name}
+                                  onSelect={() => {
+                                    if (type === 'sale') {
+                                      setCustomerId(item.id);
+                                      setOpenCustomer(false);
+                                    } else {
+                                      setVendorId(item.id);
+                                      setOpenVendor(false);
+                                    }
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      (type === 'sale' ? customerId : vendorId) === item.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div>
+                                    <p className="font-medium">{item.name} ({item.uniqueId})</p>
+                                    <p className="text-sm text-gray-500">{item.phoneNo}</p>
+                                    {item.balance > 0 && (
+                                      <p className="text-sm text-orange-600">
+                                        Balance: PKR {item.balance.toFixed(2)}
+                                      </p>
+                                    )}
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" onClick={addItem} className="w-full bg-blue-600 hover:bg-blue-700">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Item
                     </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0 z-[60]">
-                    <Command>
-                      <CommandInput placeholder={`Search ${type === 'sale' ? 'customer' : 'vendor'}...`} />
-                      <CommandList>
-                        <CommandEmpty>No {type === 'sale' ? 'customer' : 'vendor'} found.</CommandEmpty>
-                        <CommandGroup>
-                          {(type === 'sale' ? customers : vendors).map((item) => (
-                            <CommandItem
-                              key={item.id}
-                              value={item.name}
-                              onSelect={() => {
-                                if (type === 'sale') {
-                                  setCustomerId(item.id);
-                                  setOpenCustomer(false);
-                                } else {
-                                  setVendorId(item.id);
-                                  setOpenVendor(false);
-                                }
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  (type === 'sale' ? customerId : vendorId) === item.id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              {item.name} - {item.phoneNo}
-                              {item.balance > 0 && (
-                                <span className="ml-2 text-sm text-orange-600">
-                                  (Balance: PKR {item.balance.toFixed(2)})
-                                </span>
-                              )}
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="flex items-end">
-                <Button type="button" onClick={addItem} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Item
-                </Button>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-50 px-4 py-3 border-b">
-                <h3 className="font-medium">Transaction Items</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Product</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Quantity</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Unit Price (PKR)</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Total (PKR)</th>
-                      <th className="px-4 py-3 text-left text-sm font-medium text-gray-700">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, index) => (
-                      <TransactionItemRow
-                        key={item.id}
-                        item={item}
-                        products={products}
-                        type={type}
-                        onUpdate={updateItem}
-                        onRemove={removeItem}
-                        canRemove={items.length > 1}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Total Amount */}
-            {getTotalAmount() > 0 && (
-              <div className="bg-gray-100 p-4 rounded-lg">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium">Total Amount:</span>
-                  <span className="text-2xl font-bold text-blue-600">
-                    PKR {getTotalAmount().toFixed(2)}
-                  </span>
+                  </div>
                 </div>
               </div>
-            )}
 
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button type="button" variant="outline" onClick={onClose}>
-                Cancel
-              </Button>
-              <Button 
-                type="submit" 
-                className={type === 'sale' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'}
-              >
-                {type === 'sale' ? 'Complete Sale' : 'Complete Purchase'}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+              {/* Items Table */}
+              <div className="border rounded-lg overflow-hidden shadow-sm">
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 border-b">
+                  <h3 className="font-semibold text-gray-800">Transaction Items</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Product</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Quantity</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Unit Price (PKR)</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Total (PKR)</th>
+                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {items.map((item, index) => (
+                        <TransactionItemRow
+                          key={item.id}
+                          item={item}
+                          products={products}
+                          type={type}
+                          onUpdate={updateItem}
+                          onRemove={removeItem}
+                          canRemove={items.length > 1}
+                        />
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Total Amount */}
+              {getTotalAmount() > 0 && (
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl font-semibold text-blue-800">Total Amount:</span>
+                    <span className="text-3xl font-bold text-blue-900">
+                      PKR {getTotalAmount().toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-3 pt-6 border-t">
+                <Button type="button" variant="outline" onClick={onClose} className="px-8">
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className={`px-8 ${type === 'sale' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} shadow-lg`}
+                >
+                  {type === 'sale' ? 'Complete Sale' : 'Complete Purchase'}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Success Dialog */}
+      <BillSuccessDialog
+        isOpen={showSuccessDialog}
+        onClose={() => {
+          setShowSuccessDialog(false);
+          onClose();
+        }}
+        transaction={completedTransaction}
+        customer={completedTransaction?.customer}
+        vendor={completedTransaction?.vendor}
+        type={type}
+      />
+    </>
   );
 };
 
@@ -367,19 +381,19 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
   const [openProduct, setOpenProduct] = useState(false);
 
   return (
-    <tr className="border-b">
-      <td className="px-4 py-3">
+    <tr className="border-b hover:bg-gray-50 transition-colors">
+      <td className="px-6 py-4">
         <Popover open={openProduct} onOpenChange={setOpenProduct}>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
               role="combobox"
               aria-expanded={openProduct}
-              className="w-full justify-between"
+              className="w-full justify-between h-10"
               size="sm"
             >
               {item.productId ? (
-                <span>{item.productName}</span>
+                <span className="truncate">{item.productName}</span>
               ) : (
                 <span className="text-gray-500">Select product...</span>
               )}
@@ -407,7 +421,10 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
                           item.productId === product.id ? "opacity-100" : "opacity-0"
                         )}
                       />
-                      {product.name} - Stock: {product.quantity}
+                      <div>
+                        <p className="font-medium">{product.name}</p>
+                        <p className="text-sm text-gray-500">Stock: {product.quantity}</p>
+                      </div>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -416,35 +433,35 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           </PopoverContent>
         </Popover>
       </td>
-      <td className="px-4 py-3">
+      <td className="px-6 py-4">
          <Input
           type="number"
           min="1"
           value={item.quantity.toString()}
           onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
-          className="w-20"
+          className="w-24 h-10"
         />
       </td>
-      <td className="px-4 py-3">
+      <td className="px-6 py-4">
         <Input
           type="number"
           step="0.01"
           min="0"
           value={item.price.toString()}
           onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
-          className="w-24"
+          className="w-32 h-10"
         />
       </td>
-      <td className="px-4 py-3">
-        <span className="font-medium">PKR {item.totalPrice.toFixed(2)}</span>
+      <td className="px-6 py-4">
+        <span className="font-semibold text-lg">PKR {item.totalPrice.toFixed(2)}</span>
       </td>
-      <td className="px-4 py-3">
+      <td className="px-6 py-4">
         {canRemove && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => onRemove(item.id)}
-            className="text-red-600 hover:text-red-700"
+            className="text-red-600 hover:text-red-700 hover:bg-red-50"
           >
             <Trash className="h-4 w-4" />
           </Button>
