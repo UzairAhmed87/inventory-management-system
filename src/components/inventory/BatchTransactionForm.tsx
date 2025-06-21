@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -423,7 +422,6 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           value={item.quantity.toString()}
           onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
           className="w-20"
-          size="sm"
         />
       </td>
       <td className="px-4 py-3">
@@ -434,7 +432,6 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           value={item.price.toString()}
           onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
           className="w-24"
-          size="sm"
         />
       </td>
       <td className="px-4 py-3">
