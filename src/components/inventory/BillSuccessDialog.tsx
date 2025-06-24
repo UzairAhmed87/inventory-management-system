@@ -1,31 +1,54 @@
-
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { CheckCircle, Download, X } from 'lucide-react';
 import { ExportUtils } from '@/utils/exportUtils';
+import { CompletedBatchTransaction } from '@/types';
+import { Customer, Vendor } from '@/store/inventoryStore';
 
 interface BillSuccessDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  transaction: any;
-  customer?: any;
-  vendor?: any;
-  type: 'sale' | 'purchase';
+  transaction: CompletedBatchTransaction | null;
 }
 
 export const BillSuccessDialog: React.FC<BillSuccessDialogProps> = ({
   isOpen,
   onClose,
   transaction,
-  customer,
-  vendor,
-  type
 }) => {
-  if (!isOpen) return null;
+  if (!isOpen || !transaction) return null;
+
+  const { type, customer, vendor, customerId, vendorId } = transaction;
+
+  const { customers, vendors } = require('@/store/inventoryStore');
+  // Fallback: If customer/vendor is missing, look up by ID
+  const resolvedCustomer = customer || (customerId ? customers.find((c: any) => c.id === customerId) : null);
+  const resolvedVendor = vendor || (vendorId ? vendors.find((v: any) => v.id === vendorId) : null);
+console.log(transaction);
+  // For display and bill: decide which to use for returns
+  let displayName = '';
+  let displayLabel = '';
+  if (type === 'sale' || (type === 'return' && customerId)) {
+    displayName = resolvedCustomer?.name || 'N/A';
+    displayLabel = 'Customer';
+  } else if (type === 'purchase' || (type === 'return' && vendorId)) {
+    displayName = resolvedVendor?.name || 'N/A';
+    displayLabel = 'Vendor';
+  }
 
   const handleDownloadBill = (format: 'excel' | 'pdf') => {
-    ExportUtils.exportTransactionBill(transaction, customer, vendor, format);
+    // Always look up the latest customer/vendor from the store at the time of download
+    const latestCustomer = transaction.customerId ? customers.find((c: any) => c.id === transaction.customerId) : null;
+    const latestVendor = transaction.vendorId ? vendors.find((v: any) => v.id === transaction.vendorId) : null;
+    console.log("Transaction vendorId:", transaction.vendorId);
+    console.log("Vendors in store:", vendors);
+    console.log("Resolved latestVendor:", latestVendor);
+    if (transaction.vendorId && !latestVendor) {
+      alert('Vendor not found. Please check vendor data or refresh the page.');
+      return;
+    }
+    ExportUtils.exportTransactionBill(transaction, latestCustomer, latestVendor, format);
   };
 
   return (
@@ -50,7 +73,7 @@ export const BillSuccessDialog: React.FC<BillSuccessDialogProps> = ({
             <div className="space-y-1 text-sm">
               <p><strong>Invoice:</strong> {transaction.invoiceNumber}</p>
               <p><strong>Amount:</strong> PKR {(transaction.totalAmount || 0).toFixed(2)}</p>
-              <p><strong>{type === 'sale' ? 'Customer' : 'Vendor'}:</strong> {customer?.name || vendor?.name}</p>
+              <p><strong>{displayLabel}:</strong> {displayName}</p>
             </div>
           </div>
           

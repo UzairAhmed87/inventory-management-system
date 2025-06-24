@@ -1,80 +1,60 @@
+import * as XLSX from "xlsx";
+import { Customer, Vendor, Transaction } from "@/store/inventoryStore";
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { log } from "console";
 
 export class ExportUtils {
-  static exportToExcel(data: any[], filename: string) {
-    // Create CSV content
-    if (data.length === 0) return;
-    
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
-    ].join('\n');
-    
-    // Create and download file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${filename}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  static exportToExcel(data: Record<string, any>[], filename: string) {
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+    XLSX.writeFile(wb, `${filename}.xlsx`);
   }
 
-  static exportToPDF(data: any[], title: string) {
-    // Create a simple HTML table for printing
-    if (data.length === 0) return;
-    
-    const headers = Object.keys(data[0]);
-    const tableHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${title}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          h1 { color: #333; text-align: center; }
-          table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-          th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-          tr:nth-child(even) { background-color: #f9f9f9; }
-          .date { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
-        </style>
-      </head>
-      <body>
-        <h1>${title}</h1>
-        <table>
-          <thead>
-            <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
-          </thead>
-          <tbody>
-            ${data.map(row => 
-              `<tr>${headers.map(h => `<td>${row[h] || ''}</td>`).join('')}</tr>`
-            ).join('')}
-          </tbody>
-        </table>
-        <div class="date">Generated on: ${new Date().toLocaleString()}</div>
-      </body>
-      </html>
-    `;
-    
-    // Open in new window for printing
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(tableHTML);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 250);
+  static exportToPDF(data: Record<string, any>[], title: string, subtitle?: string) {
+    const doc = new jsPDF();
+    let y = 14;
+    doc.setFontSize(16);
+    doc.text(title, 14, y);
+    y += 8;
+    if (subtitle) {
+      doc.setFontSize(12);
+      doc.text(subtitle, 14, y);
+      y += 6;
     }
+    if (data.length > 0) {
+      const columns = Object.keys(data[0]);
+      const rows = data.map(row => columns.map(col => row[col]));
+      autoTable(doc, {
+        head: [columns],
+        body: rows,
+        startY: y + 2,
+        styles: { fontSize: 10 },
+        headStyles: { fillColor: [40, 167, 69] },
+      });
+    } else {
+      doc.text('No data available', 14, y + 10);
+    }
+    doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
   }
 
-  static exportTransactionBill(transaction: any, customer: any, vendor: any, format: 'excel' | 'pdf') {
-    const isCustomer = transaction.type === 'sale';
-    const client = isCustomer ? customer : vendor;
+  static exportTransactionBill(transaction: Transaction, customer: Customer | null, vendor: Vendor | null, format: 'excel' | 'pdf') {
+    console.log("Vendor",vendor);
     
+    let client: Customer | Vendor;
+    let clientType = '';
+    console.log("Client:",client);
+    
+    if (transaction.type === 'sale' || (transaction.type === 'return' && transaction.customerId)) {
+      client = customer;
+      console.log("Client:",client);
+      clientType = 'Customer';
+    } else if (transaction.type === 'purchase' || (transaction.type === 'return' && transaction.vendorId)) {
+      client = vendor;
+      console.log("Client:",client);
+      clientType = 'Vendor';
+    }
     if (format === 'pdf') {
       const billHTML = `
         <!DOCTYPE html>
@@ -83,47 +63,40 @@ export class ExportUtils {
           <title>Invoice - ${transaction.invoiceNumber}</title>
           <style>
             body { font-family: 'Arial', sans-serif; margin: 0; padding: 20px; background: #f8f9fa; }
-            .invoice-container { max-width: 800px; margin: 0 auto; background: white; padding: 40px; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 8px; }
-            .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #007bff; padding-bottom: 20px; }
-            .company-name { font-size: 28px; font-weight: bold; color: #007bff; margin-bottom: 5px; }
-            .invoice-title { font-size: 24px; color: #333; margin: 20px 0 10px; }
-            .invoice-meta { display: flex; justify-content: space-between; margin-bottom: 30px; }
+            .invoice-container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; box-shadow: 0 0 20px rgba(0,0,0,0.1); border-radius: 8px; }
+            .header { text-align: center; margin-bottom: 10px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+            .company-name { font-size: 22px; font-weight: bold; color: #007bff; margin-bottom: 2px; }
+            .invoice-title { font-size: 18px; color: #333; margin: 10px 0 5px; }
+            .invoice-meta { display: flex; justify-content: space-between; margin-bottom: 10px; }
             .client-info, .invoice-info { flex: 1; }
-            .client-info { margin-right: 40px; }
-            .info-label { font-weight: bold; color: #555; margin-bottom: 5px; }
-            .info-value { color: #333; margin-bottom: 15px; font-size: 16px; }
-            .items-table { width: 100%; border-collapse: collapse; margin: 30px 0; }
-            .items-table th { background: #007bff; color: white; padding: 15px 10px; text-align: left; font-weight: bold; }
-            .items-table td { padding: 12px 10px; border-bottom: 1px solid #eee; }
+            .client-info { margin-right: 20px; }
+            .info-label { font-weight: bold; color: #555; margin-bottom: 1px; }
+            .info-value { color: #333; margin-bottom: 3px; font-size: 14px; }
+            .items-table { width: 100%; border-collapse: collapse; margin: 0px 0; }
+            .items-table th, .items-table td { border: 1px solid #333; padding: 3px 5px; text-align: left; font-size: 13px; }
+            .items-table th { background: #007bff; color: white; font-weight: bold; }
+            .items-table td.amount { text-align: right; }
             .items-table tr:nth-child(even) { background: #f8f9fa; }
             .total-row { background: #e3f2fd !important; font-weight: bold; }
-            .balance-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-            .balance-row { display: flex; justify-content: space-between; margin: 10px 0; padding: 8px 0; }
-            .balance-label { font-weight: bold; color: #555; }
-            .balance-value { font-weight: bold; color: #333; }
-            .current-balance { border-top: 2px solid #007bff; padding-top: 10px; font-size: 18px; }
-            .footer { text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; color: #666; }
-            .amount { text-align: right; }
+            .footer { font-size:11px;clear: both;display:flex;justify-content:space-between; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; color: #666; }
             .highlight { color: #007bff; font-weight: bold; }
           </style>
         </head>
         <body>
           <div class="invoice-container">
             <div class="header">
-              <div class="company-name">Inventory Management System</div>
-              <div class="invoice-title">${isCustomer ? 'SALES INVOICE' : 'PURCHASE INVOICE'}</div>
+              <div class="company-name">Company Name</div>
+              <div class="invoice-title">${transaction.type === 'sale' ? 'SALES INVOICE' : transaction.type === 'return' ? 'RETURN INVOICE' : 'PURCHASE INVOICE'}</div>
             </div>
-            
             <div class="invoice-meta">
               <div class="client-info">
-                <div class="info-label">${isCustomer ? 'Bill To:' : 'Vendor:'}</div>
+                <div class="info-label">${clientType}:</div>
                 <div class="info-value">${client?.name || 'N/A'}</div>
-                <div class="info-label">${isCustomer ? 'Customer ID:' : 'Vendor ID:'}</div>
+                <div class="info-label">${clientType} ID:</div>
                 <div class="info-value">${client?.uniqueId || 'N/A'}</div>
                 <div class="info-label">Phone:</div>
                 <div class="info-value">${client?.phoneNo || 'N/A'}</div>
               </div>
-              
               <div class="invoice-info">
                 <div class="info-label">Invoice Number:</div>
                 <div class="info-value highlight">${transaction.invoiceNumber}</div>
@@ -133,56 +106,57 @@ export class ExportUtils {
                 <div class="info-value">${new Date(transaction.date).toLocaleTimeString()}</div>
               </div>
             </div>
-            
             <table class="items-table">
               <thead>
                 <tr>
+                  <th style="width: 8%;">S.No</th>
                   <th style="width: 40%;">Product</th>
                   <th style="width: 15%;">Quantity</th>
                   <th style="width: 20%;">Unit Price</th>
-                  <th style="width: 25%;">Total</th>
+                  <th style="width: 17%;">Total</th>
                 </tr>
               </thead>
               <tbody>
-                ${transaction.items.map((item: any) => `
+                ${transaction.items.map((item, idx: number) => `
                   <tr>
+                    <td>${idx + 1}</td>
                     <td>${item.productName}</td>
                     <td class="amount">${item.quantity}</td>
-                    <td class="amount">PKR ${(item.price || 0).toFixed(2)}</td>
-                    <td class="amount">PKR ${(item.totalPrice || 0).toFixed(2)}</td>
+                    <td class="amount"> ${(item.price || 0).toFixed(2)}</td>
+                    <td class="amount"> ${(item.totalPrice || 0).toFixed(2)}</td>
                   </tr>
                 `).join('')}
+                <tr>
+                  <td colspan="3" style="border: none;"></td>
+                  <td class="summary-label">Previous Balance:</td>
+                  <td class="amount"> ${(transaction.previousBalance || 0).toFixed(2)}</td>
+                </tr>
+                <tr>
+                  <td colspan="3" style="border: none;"></td>
+                  <td class="summary-label">Current Bill:</td>
+                  <td class="amount"> ${(transaction.totalAmount || 0).toFixed(2)}</td>
+                </tr>
                 <tr class="total-row">
-                  <td colspan="3" style="text-align: right; font-size: 18px;">TOTAL AMOUNT:</td>
-                  <td class="amount" style="font-size: 18px;">PKR ${(transaction.totalAmount || 0).toFixed(2)}</td>
+                  <td colspan="3" style="border: none;"></td>
+                  <td class="summary-label">Total Balance:</td>
+                  <td class="amount highlight"> ${(transaction.newBalance || 0).toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
-            
-            <div class="balance-section">
-              <div class="balance-row">
-                <span class="balance-label">Previous Balance:</span>
-                <span class="balance-value">PKR ${(transaction.previousBalance || 0).toFixed(2)}</span>
-              </div>
-              <div class="balance-row">
-                <span class="balance-label">Current ${isCustomer ? 'Sale' : 'Purchase'}:</span>
-                <span class="balance-value">PKR ${(transaction.totalAmount || 0).toFixed(2)}</span>
-              </div>
-              <div class="balance-row current-balance">
-                <span class="balance-label">New Balance:</span>
-                <span class="balance-value highlight">PKR ${(transaction.newBalance || 0).toFixed(2)}</span>
-              </div>
-            </div>
-            
             <div class="footer">
-              <p>Thank you for your business!</p>
-              <p style="font-size: 12px;">Generated on: ${new Date().toLocaleString()}</p>
+            <p style="font-size: 12px;">Generated on: ${new Date().toLocaleString()}</p>
+            <div>
+              <p>Software developer by Uzair Ahmed</p>
+              <p>03172146698</p>
+              </div>
             </div>
+            
           </div>
+              
+
         </body>
         </html>
       `;
-      
       const printWindow = window.open('', '_blank');
       if (printWindow) {
         printWindow.document.write(billHTML);
@@ -197,20 +171,20 @@ export class ExportUtils {
       const data = [
         { Field: 'Invoice Number', Value: transaction.invoiceNumber },
         { Field: 'Date', Value: new Date(transaction.date).toLocaleDateString() },
-        { Field: 'Type', Value: isCustomer ? 'Sale' : 'Purchase' },
-        { Field: isCustomer ? 'Customer Name' : 'Vendor Name', Value: client?.name || 'N/A' },
-        { Field: isCustomer ? 'Customer ID' : 'Vendor ID', Value: client?.uniqueId || 'N/A' },
+        { Field: 'Type', Value: transaction.type === 'sale' ? 'Sale' : transaction.type === 'return' ? 'Return' : 'Purchase' },
+        { Field: `${clientType} Name`, Value: client?.name || 'N/A' },
+        { Field: `${clientType} ID`, Value: client?.uniqueId || 'N/A' },
         { Field: 'Phone', Value: client?.phoneNo || 'N/A' },
         { Field: '', Value: '' }, // Empty row
         { Field: 'ITEMS', Value: '' },
-        ...transaction.items.map((item: any, index: number) => ({
+        ...transaction.items.map((item, index: number) => ({
           Field: `Item ${index + 1}`,
-          Value: `${item.productName} - Qty: ${item.quantity} - Price: PKR ${(item.price || 0).toFixed(2)} - Total: PKR ${(item.totalPrice || 0).toFixed(2)}`
+          Value: `${item.productName} - Qty: ${item.quantity} - Price: ${(item.price || 0).toFixed(2)} - Total: PKR ${(item.totalPrice || 0).toFixed(2)}`
         })),
         { Field: '', Value: '' }, // Empty row
-        { Field: 'Previous Balance', Value: `PKR ${(transaction.previousBalance || 0).toFixed(2)}` },
-        { Field: 'Current Amount', Value: `PKR ${(transaction.totalAmount || 0).toFixed(2)}` },
-        { Field: 'New Balance', Value: `PKR ${(transaction.newBalance || 0).toFixed(2)}` },
+        { Field: 'Previous Balance', Value: `${(transaction.previousBalance || 0).toFixed(2)}` },
+        { Field: 'Current Amount', Value: ` ${(transaction.totalAmount || 0).toFixed(2)}` },
+        { Field: 'New Balance', Value: `${(transaction.newBalance || 0).toFixed(2)}` },
       ];
       
       ExportUtils.exportToExcel(data, `Invoice_${transaction.invoiceNumber}`);

@@ -1,37 +1,42 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Edit, Trash, Package, Search, Filter } from 'lucide-react';
-import { useInventoryStore } from '@/store/inventoryStore';
+import { useInventoryStore, Product } from '@/store/inventoryStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 
+type StockFilter = 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
+
 export const ProductSection = () => {
-  const { products, addProduct, updateProduct, deleteProduct } = useInventoryStore();
+  const { products, addProduct, updateProduct, deleteProduct, fetchProducts } = useInventoryStore();
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [stockFilter, setStockFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
+  const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [formData, setFormData] = useState({
     name: '',
     quantity: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.quantity) return;
 
     if (editingProduct) {
-      updateProduct(editingProduct, {
+      await updateProduct(editingProduct, {
         name: formData.name,
         quantity: parseInt(formData.quantity),
       });
       setEditingProduct(null);
     } else {
-      addProduct({
+      await addProduct({
         name: formData.name,
         quantity: parseInt(formData.quantity),
       });
@@ -41,7 +46,7 @@ export const ProductSection = () => {
     setShowForm(false);
   };
 
-  const handleEdit = (product: any) => {
+  const handleEdit = (product: Product) => {
     setEditingProduct(product.id);
     setFormData({
       name: product.name,
@@ -50,9 +55,9 @@ export const ProductSection = () => {
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      deleteProduct(id);
+      await deleteProduct(id);
     }
   };
 
@@ -155,7 +160,7 @@ export const ProductSection = () => {
             </div>
             <div>
               <Label>Stock Filter</Label>
-              <Select value={stockFilter} onValueChange={(value: any) => setStockFilter(value)}>
+              <Select value={stockFilter} onValueChange={(value: StockFilter) => setStockFilter(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

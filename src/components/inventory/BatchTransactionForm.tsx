@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,14 +6,17 @@ import { Label } from '@/components/ui/label';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { X, ShoppingCart, Package, Check, ChevronsUpDown, Plus, Trash } from 'lucide-react';
-import { useInventoryStore } from '@/store/inventoryStore';
+import { useInventoryStore, Transaction, Product } from '@/store/inventoryStore';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { BillSuccessDialog } from './BillSuccessDialog';
+import { CompletedBatchTransaction } from '@/types';
 
 interface BatchTransactionFormProps {
-  type: 'sale' | 'purchase';
+  type: 'sale' | 'purchase' | 'return';
   onClose: () => void;
+  transaction?: Transaction;
+  isEditMode?: boolean;
 }
 
 interface TransactionItem {
@@ -25,41 +28,42 @@ interface TransactionItem {
   totalPrice: number;
 }
 
-export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type, onClose }) => {
-  const { products, customers, vendors, addTransaction } = useInventoryStore();
+export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type, onClose, transaction, isEditMode }) => {
+  const { products, customers, vendors, addTransaction, updateTransaction, fetchProducts, fetchCustomers, fetchVendors } = useInventoryStore();
   const [customerId, setCustomerId] = useState('');
   const [vendorId, setVendorId] = useState('');
   const [items, setItems] = useState<TransactionItem[]>([]);
   const [openCustomer, setOpenCustomer] = useState(false);
   const [openVendor, setOpenVendor] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
-  const [completedTransaction, setCompletedTransaction] = useState<any>(null);
+  const [completedTransaction, setCompletedTransaction] = useState<CompletedBatchTransaction | null>(null);
 
-  const addItem = () => {
-    // Only add if all existing items are properly filled
-    const hasIncompleteItems = items.some(item => 
-      !item.productId || item.quantity <= 0 || item.price <= 0
-    );
-    
-    if (hasIncompleteItems && items.length > 0) {
-      toast({
-        title: "Complete Current Items",
-        description: "Please fill in all details for existing items before adding new ones",
-        variant: "destructive",
-      });
-      return;
-    }
+  const addItem = useCallback(() => {
+    setItems(prevItems => {
+      const hasIncompleteItems = prevItems.some(item => 
+        !item.productId || item.quantity <= 0 || item.price <= 0
+      );
+      
+      if (hasIncompleteItems && prevItems.length > 0) {
+        toast({
+          title: "Complete Current Items",
+          description: "Please fill in all details for existing items before adding new ones",
+          variant: "destructive",
+        });
+        return prevItems;
+      }
 
-    const newItem: TransactionItem = {
-      id: crypto.randomUUID(),
-      productId: '',
-      productName: '',
-      quantity: 1,
-      price: 0,
-      totalPrice: 0,
-    };
-    setItems([...items, newItem]);
-  };
+      const newItem: TransactionItem = {
+        id: crypto.randomUUID(),
+        productId: '',
+        productName: '',
+        quantity: 1,
+        price: 0,
+        totalPrice: 0,
+      };
+      return [...prevItems, newItem];
+    });
+  }, []);
 
   const removeItem = (id: string) => {
     setItems(items.filter(item => item.id !== id));
@@ -95,7 +99,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
     return items.reduce((sum, item) => sum + item.totalPrice, 0);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Filter out empty/incomplete items
@@ -134,10 +138,18 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
     if (type === 'sale') {
       for (const item of validItems) {
         const product = products.find(p => p.id === item.productId);
-        if (product && product.quantity < item.quantity) {
+        let availableStock = product ? product.quantity : 0;
+        if (isEditMode && transaction) {
+          // Find the original quantity for this product in the transaction
+          const originalItem = transaction.items.find(i => i.productId === item.productId);
+          if (originalItem) {
+            availableStock += originalItem.quantity;
+          }
+        }
+        if (product && item.quantity > availableStock) {
           toast({
             title: "Insufficient Stock",
-            description: `Only ${product.quantity} units available for ${product.name}`,
+            description: `Only ${availableStock} units available for ${product.name}`,
             variant: "destructive",
           });
           return;
@@ -145,53 +157,65 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
       }
     }
 
-    const transaction = {
+    const transactionData = {
       type,
       customerId: type === 'sale' ? customerId : undefined,
       vendorId: type === 'purchase' ? vendorId : undefined,
       items: validItems.map(({ id, ...item }) => item),
       totalAmount: validItems.reduce((sum, item) => sum + item.totalPrice, 0),
-      date: new Date(),
+      date: new Date().toISOString(),
     };
 
-    addTransaction(transaction);
+    if (isEditMode && transaction) {
+      await updateTransaction(transaction.id, transactionData);
+      toast({
+        title: 'Success',
+        description: 'Transaction updated successfully',
+      });
+      onClose();
+      return;
+    } else {
+      const newTransaction = await addTransaction(transactionData);
 
-    // Get the latest transaction (the one we just added) for the success dialog
-    const customer = type === 'sale' ? customers.find(c => c.id === customerId) : undefined;
-    const vendor = type === 'purchase' ? vendors.find(v => v.id === vendorId) : undefined;
-    
-    // Create transaction object with invoice number for success dialog
-    const transactionWithInvoice = {
-      ...transaction,
-      invoiceNumber: `${type === 'sale' ? 'INV' : 'PUR'}${new Date().getFullYear()}${(new Date().getMonth() + 1).toString().padStart(2, '0')}${new Date().getDate().toString().padStart(2, '0')}001`, // This will be generated properly in store
-      previousBalance: customer?.balance || vendor?.balance || 0,
-      newBalance: (customer?.balance || vendor?.balance || 0) + transaction.totalAmount,
-    };
+      // Get the latest transaction (the one we just added) for the success dialog
+      const customer = type === 'sale' || (type === 'return' && newTransaction.customerId) ? customers.find(c => c.id === (newTransaction.customerId || customerId)) : undefined;
+      const vendor = type === 'purchase' || (type === 'return' && newTransaction.vendorId) ? vendors.find(v => v.id === (newTransaction.vendorId || vendorId)) : undefined;
+      
+      setCompletedTransaction({
+        ...newTransaction,
+        customer,
+        vendor
+      });
+      setShowSuccessDialog(true);
 
-    setCompletedTransaction({
-      ...transactionWithInvoice,
-      customer,
-      vendor
-    });
-    setShowSuccessDialog(true);
-
-    toast({
-      title: "Success",
-      description: `${type === 'sale' ? 'Sale' : 'Purchase'} transaction completed successfully`,
-    });
+      toast({
+        title: "Success",
+        description: `${type === 'sale' ? 'Sale' : type === 'purchase' ? 'Purchase' : 'Return'} transaction completed successfully`,
+      });
+    }
   };
 
   useEffect(() => {
-    if (items.length === 0) {
+    fetchProducts();
+    fetchCustomers();
+    fetchVendors();
+    if (isEditMode && transaction) {
+      setItems(transaction.items.map((item) => ({
+        id: crypto.randomUUID(),
+        ...item,
+      })));
+      if (transaction.type === 'sale') setCustomerId(transaction.customerId || '');
+      if (transaction.type === 'purchase') setVendorId(transaction.vendorId || '');
+    } else if (items.length === 0) {
       addItem();
     }
-  }, []);
+  }, [fetchProducts, fetchCustomers, fetchVendors, isEditMode, transaction, addItem]);
 
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white shadow-2xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-t-lg">
+          <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-4 ${type == 'purchase'? 'bg-gradient-to-r from-blue-600 to-blue-700':'bg-gradient-to-r from-green-600 to-green-700'}  text-white rounded-t-lg`}>
             <div className="flex items-center space-x-3">
               {type === 'sale' ? (
                 <ShoppingCart className="h-6 w-6" />
@@ -199,7 +223,9 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                 <Package className="h-6 w-6" />
               )}
               <CardTitle className="text-xl">
-                {type === 'sale' ? 'New Sale Transaction' : 'New Purchase Transaction'}
+                {isEditMode
+                  ? type === 'sale' ? 'Edit Sale Transaction' : 'Edit Purchase Transaction'
+                  : type === 'sale' ? 'New Sale Transaction' : 'New Purchase Transaction'}
               </CardTitle>
             </div>
             <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white/20">
@@ -280,7 +306,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                     </Popover>
                   </div>
                   <div className="flex items-end">
-                    <Button type="button" onClick={addItem} className="w-full bg-blue-600 hover:bg-blue-700">
+                    <Button type="button" onClick={addItem} className={`w-full ${type=='purchase'?' bg-blue-600 hover:bg-blue-700':'bg-green-600 hover:bg-green-700'}`}>
                       <Plus className="h-4 w-4 mr-2" />
                       Add Item
                     </Button>
@@ -326,7 +352,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                 <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
                   <div className="flex justify-between items-center">
                     <span className="text-xl font-semibold text-blue-800">Total Amount:</span>
-                    <span className="text-3xl font-bold text-blue-900">
+                    <span className="text-xl font-bold text-blue-900">
                       PKR {getTotalAmount().toFixed(2)}
                     </span>
                   </div>
@@ -341,7 +367,9 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                   type="submit" 
                   className={`px-8 ${type === 'sale' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} shadow-lg`}
                 >
-                  {type === 'sale' ? 'Complete Sale' : 'Complete Purchase'}
+                  {isEditMode
+                    ? (type === 'sale' ? 'Update Sale' : 'Update Purchase')
+                    : (type === 'sale' ? 'Complete Sale' : 'Complete Purchase')}
                 </Button>
               </div>
             </form>
@@ -350,25 +378,24 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
       </div>
 
       {/* Success Dialog */}
-      <BillSuccessDialog
-        isOpen={showSuccessDialog}
-        onClose={() => {
-          setShowSuccessDialog(false);
-          onClose();
-        }}
-        transaction={completedTransaction}
-        customer={completedTransaction?.customer}
-        vendor={completedTransaction?.vendor}
-        type={type}
-      />
+      {isEditMode ? null : (
+        <BillSuccessDialog
+          isOpen={showSuccessDialog}
+          onClose={() => {
+            setShowSuccessDialog(false);
+            onClose();
+          }}
+          transaction={completedTransaction}
+        />
+      )}
     </>
   );
 };
 
 interface TransactionItemRowProps {
   item: TransactionItem;
-  products: any[];
-  type: 'sale' | 'purchase';
+  products: Product[];
+  type: 'sale' | 'purchase' | 'return';
   onUpdate: (id: string, field: keyof TransactionItem, value: string | number) => void;
   onRemove: (id: string) => void;
   canRemove: boolean;
@@ -435,11 +462,11 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
       <td className="px-6 py-4">
          <Input
           type="number"
-          min="1"
+          min="0.01"
+          step="0.01"
           value={item.quantity.toString()}
           onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
-          className="w-20"
-          size="sm"
+           className="w-20"
         />
       </td>
       <td className="px-6 py-4">
@@ -450,7 +477,6 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           value={item.price.toString()}
           onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
           className="w-24"
-          size="sm"
         />
       </td>
       <td className="px-6 py-4">

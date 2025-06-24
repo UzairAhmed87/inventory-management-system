@@ -1,25 +1,50 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileDown, Search, ShoppingCart, Package, Filter, Calendar } from 'lucide-react';
-import { useInventoryStore } from '@/store/inventoryStore';
+import { useInventoryStore, Transaction } from '@/store/inventoryStore';
 import { ExportUtils } from '@/utils/exportUtils';
+import { BatchTransactionForm } from './BatchTransactionForm';
+import { TransactionForm } from './TransactionForm';
+
+type TransactionFilterType = 'all' | 'sale' | 'purchase';
+
+interface TransactionExport {
+  Date: string;
+  'Invoice Number': string;
+  Type: 'Sale' | 'Purchase';
+  'Customer/Vendor': string;
+  'ID': string;
+  Product: string;
+  Quantity: number;
+  'Unit Price': string;
+  'Total Price': string;
+}
 
 export const TransactionHistory = () => {
-  const { transactions, customers, vendors } = useInventoryStore();
+  const { transactions, customers, vendors, fetchTransactions, fetchCustomers, fetchVendors } = useInventoryStore();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'sale' | 'purchase'>('all');
+  const [filterType, setFilterType] = useState<TransactionFilterType>('all');
   const [dateFilter, setDateFilter] = useState('');
   const [monthFilter, setMonthFilter] = useState('all');
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [showReturnForm, setShowReturnForm] = useState(false);
+  const [returnTransaction, setReturnTransaction] = useState<Transaction | null>(null);
 
   const currentYear = new Date().getFullYear();
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
+
+  useEffect(() => {
+    fetchTransactions();
+    fetchCustomers();
+    fetchVendors();
+  }, [fetchTransactions, fetchCustomers, fetchVendors]);
 
   const filteredTransactions = transactions
     .filter(t => {
@@ -53,7 +78,7 @@ export const TransactionHistory = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const exportTransactions = (format: 'excel' | 'pdf') => {
-    const data: any[] = [];
+    const data: TransactionExport[] = [];
     filteredTransactions.forEach(t => {
       if (!t || !t.items) return;
       
@@ -70,8 +95,8 @@ export const TransactionHistory = () => {
           'ID': customer?.uniqueId || vendor?.uniqueId || 'N/A',
           Product: item.productName || 'N/A',
           Quantity: item.quantity || 0,
-          'Unit Price': `PKR ${(item.price || 0).toFixed(2)}`,
-          'Total Price': `PKR ${(item.totalPrice || 0).toFixed(2)}`
+          'Unit Price': ` ${(item.price || 0).toFixed(2)}`,
+          'Total Price': ` ${(item.totalPrice || 0).toFixed(2)}`
         });
       });
     });
@@ -84,12 +109,20 @@ export const TransactionHistory = () => {
   };
 
   const getTotalValue = (type?: 'sale' | 'purchase') => {
+    if (type === 'sale') {
+      return filteredTransactions
+        .filter(t => t.type === 'sale')
+        .reduce((sum, t) => sum + (t.totalAmount || 0), 0)
+        - filteredTransactions
+        .filter(t => t.type === 'return')
+        .reduce((sum, t) => sum + (t.totalAmount || 0), 0);
+    }
     return filteredTransactions
       .filter(t => !type || t.type === type)
       .reduce((sum, t) => sum + (t.totalAmount || 0), 0);
   };
 
-  const handleDownloadBill = (transaction: any) => {
+  const handleDownloadBill = (transaction: Transaction) => {
     const customer = transaction.customerId ? customers.find(c => c.id === transaction.customerId) : null;
     const vendor = transaction.vendorId ? vendors.find(v => v.id === transaction.vendorId) : null;
     
@@ -100,24 +133,6 @@ export const TransactionHistory = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold text-gray-900">Transaction History</h2>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            onClick={() => exportTransactions('excel')}
-            className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 shadow-sm"
-          >
-            <FileDown className="h-4 w-4 mr-2" />
-            Export Excel
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => exportTransactions('pdf')}
-            className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 shadow-sm"
-          >
-            <FileDown className="h-4 w-4 mr-2" />
-            Export PDF
-          </Button>
-        </div>
       </div>
 
       {/* Summary Cards */}
@@ -186,7 +201,7 @@ export const TransactionHistory = () => {
             </div>
             <div>
               <label className="text-sm font-medium mb-2 block text-gray-700">Type</label>
-              <Select value={filterType} onValueChange={(value: any) => setFilterType(value)}>
+              <Select value={filterType} onValueChange={(value: TransactionFilterType) => setFilterType(value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -264,9 +279,11 @@ export const TransactionHistory = () => {
                         <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                           transaction.type === 'sale' 
                             ? 'bg-green-100 text-green-700' 
-                            : 'bg-blue-100 text-blue-700'
+                            : transaction.type === 'purchase'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'bg-yellow-100 text-yellow-700'
                         }`}>
-                          {transaction.type === 'sale' ? 'Sale' : 'Purchase'}
+                          {transaction.type === 'sale' ? 'Sale' : transaction.type === 'purchase' ? 'Purchase' : 'Return'}
                         </span>
                       </td>
                       <td className="p-4">
@@ -297,6 +314,30 @@ export const TransactionHistory = () => {
                           <FileDown className="h-3 w-3 mr-1" />
                           Bill
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setEditingTransaction(transaction);
+                            setShowEditForm(true);
+                          }}
+                          className="ml-2 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
+                        >
+                          Edit
+                        </Button>
+                        {(transaction.type === 'sale' || transaction.type === 'purchase') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setReturnTransaction(transaction);
+                              setShowReturnForm(true);
+                            }}
+                            className="ml-2 bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
+                          >
+                            Return
+                          </Button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -312,6 +353,29 @@ export const TransactionHistory = () => {
           </div>
         </CardContent>
       </Card>
+
+      {showEditForm && editingTransaction && (
+        <BatchTransactionForm
+          type={editingTransaction.type === 'return' ? 'sale' : editingTransaction.type}
+          onClose={() => {
+            setShowEditForm(false);
+            setEditingTransaction(null);
+          }}
+          transaction={editingTransaction}
+          isEditMode={true}
+        />
+      )}
+      {showReturnForm && returnTransaction && (
+        <TransactionForm
+          type="return"
+          onClose={() => {
+            setShowReturnForm(false);
+            setReturnTransaction(null);
+          }}
+          customerId={returnTransaction.customerId}
+          originalTransaction={returnTransaction}
+        />
+      )}
     </div>
   );
 };

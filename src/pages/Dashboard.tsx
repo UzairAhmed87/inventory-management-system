@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,12 +17,16 @@ const Dashboard = () => {
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [transactionType, setTransactionType] = useState<'sale' | 'purchase'>('sale');
   
-  const { initializeStore } = useInventoryStore();
+  const { fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments } = useInventoryStore();
   const { currentUser, logout } = useAuthStore();
 
   useEffect(() => {
-    initializeStore();
-  }, [initializeStore]);
+    fetchProducts();
+    fetchCustomers();
+    fetchVendors();
+    fetchTransactions();
+    fetchBalancePayments();
+  }, [fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments]);
 
   const handleNewTransaction = (type: 'sale' | 'purchase') => {
     setTransactionType(type);
@@ -59,14 +62,14 @@ const Dashboard = () => {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
       {/* Header */}
       <header className="bg-white shadow-xl border-b border-gray-200 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl my-3 mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
               <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl flex items-center justify-center shadow-lg">
                 <Package className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Inventory Management</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Trackistory</h1>
                 <p className="text-sm text-gray-600">Professional Business Solution</p>
               </div>
             </div>

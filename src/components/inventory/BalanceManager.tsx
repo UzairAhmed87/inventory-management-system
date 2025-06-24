@@ -1,34 +1,52 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { DollarSign, Users, Truck, Calendar } from 'lucide-react';
+import { DollarSign, Users, Truck, Calendar, FileDown } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { toast } from '@/hooks/use-toast';
+import { ExportUtils } from '@/utils/exportUtils';
+import { PaymentSuccessDialog } from './PaymentSuccessDialog';
+import { CompletedPayment } from '@/types';
+import { log } from 'console';
 
 interface BalanceManagerProps {
   type: 'customer' | 'vendor';
 }
 
 export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
-  const { customers, vendors, balancePayments, addBalancePayment } = useInventoryStore();
+  const { customers, vendors, balancePayments, addBalancePayment, fetchCustomers, fetchVendors, fetchBalancePayments } = useInventoryStore();
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [paymentData, setPaymentData] = useState({
     amount: '',
     notes: '',
   });
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [completedPayment, setCompletedPayment] = useState<CompletedPayment | null>(null);
+  const [openPaymentCard, setOpenPaymentCard] = useState<string | null>(null);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const entities = type === 'customer' ? customers : vendors;
   const paymentsForType = balancePayments.filter(p => 
-    type === 'customer' ? p.type === 'customer_payment' : p.type === 'vendor_payment'
-  );
+    (type === 'customer' ? p.type === 'customer_payment' : p.type === 'vendor_payment')
+  ).filter(p => {
+    if (dateFrom && new Date(p.date) < new Date(dateFrom)) return false;
+    if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
+    return true;
+  });
 
-  const handlePayment = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchCustomers();
+    fetchVendors();
+    fetchBalancePayments();
+  }, [fetchCustomers, fetchVendors, fetchBalancePayments]);
+
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedId || !paymentData.amount || parseFloat(paymentData.amount) <= 0) {
@@ -53,14 +71,28 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
       return;
     }
 
-    addBalancePayment({
+    const newPayment = await addBalancePayment({
       type: type === 'customer' ? 'customer_payment' : 'vendor_payment',
       customerId: type === 'customer' ? selectedId : undefined,
       vendorId: type === 'vendor' ? selectedId : undefined,
       amount,
-      date: new Date(),
-      notes: paymentData.notes,
+      date: new Date().toISOString(),
+      notes: paymentData.notes
+      // invoiceNumber: ''
     });
+
+    const entityForDialog = entities.find(e => e.id === selectedId);
+    await fetchBalancePayments();
+
+    setCompletedPayment({
+      type,
+      entity: entityForDialog,
+      amount,
+      date: newPayment.date,
+      notes: paymentData.notes,
+      invoiceNumber: newPayment.invoiceNumber,
+    });
+    setShowSuccessDialog(true);
 
     toast({
       title: "Success",
@@ -77,70 +109,88 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
     setShowPaymentForm(true);
   };
 
+  const exportPayments = (format: 'excel' | 'pdf') => {
+    const data = paymentsForType.map(payment => {
+      const entity = entities.find(e => type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId);
+      return {
+        Date: new Date(payment.date).toLocaleDateString(),
+        'Invoice No': payment.invoiceNumber,
+        ID: type === 'customer' ? payment.customerId : payment.vendorId,
+        Name: entity?.name || 'N/A',
+        Notes: payment.notes || '-',
+        Amount: payment.amount,
+      };
+    });
+    if (format === 'excel') {
+      ExportUtils.exportToExcel(data, `${type === 'customer' ? 'Customer' : 'Vendor'}_Payments`);
+    } else {
+      ExportUtils.exportToPDF(data, `${type === 'customer' ? 'Customer' : 'Vendor'} Payments`);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center mb-2">
         <h3 className="text-xl font-bold text-gray-900">
-          {type === 'customer' ? 'Customer' : 'Vendor'} Balances
+          {type === 'customer' ? 'Customer' : 'Vendor'} Payments History
         </h3>
       </div>
-
-      {/* Outstanding Balances */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {entities.filter(entity => entity.balance > 0).map((entity) => (
-          <Card key={entity.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <div className="flex items-center space-x-2">
-                {type === 'customer' ? (
-                  <Users className="h-5 w-5 text-green-600" />
-                ) : (
-                  <Truck className="h-5 w-5 text-blue-600" />
-                )}
-                <CardTitle className="text-lg">{entity.name}</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Phone:</span>
-                  <span className="text-sm">{entity.phoneNo}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Outstanding Balance:</span>
-                  <span className="font-bold text-red-600">PKR {entity.balance.toFixed(2)}</span>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => openPaymentForm(entity.id)}
-                  className="w-full"
-                >
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Record Payment
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* Date Filters */}
+      <div className="flex flex-wrap gap-4 items-end mb-2">
+        <div>
+          <Label htmlFor="dateFrom">From</Label>
+          <Input
+            id="dateFrom"
+            type="date"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            className="min-w-[140px]"
+          />
+        </div>
+        <div>
+          <Label htmlFor="dateTo">To</Label>
+          <Input
+            id="dateTo"
+            type="date"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            className="min-w-[140px]"
+          />
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => { setDateFrom(''); setDateTo(''); }}
+          className="h-10"
+        >
+          Clear
+        </Button>
       </div>
-
-      {entities.filter(entity => entity.balance > 0).length === 0 && (
-        <Card className="text-center py-8">
-          <CardContent>
-            <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">
-              No outstanding balances for {type === 'customer' ? 'customers' : 'vendors'}
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Recent Payments */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center">
-            <Calendar className="h-5 w-5 mr-2" />
+          <CardTitle className="flex items-center justify-between">
+            {/* <Calendar className="h-5 w-5 mr-2" /> */}
             Recent Payments
+            <div className="flex space-x-2">
+        <Button
+            variant="outline"
+            onClick={() => exportPayments('excel')}
+            className="bg-green-700 hover:bg-green-100 text-white border-green-200 shadow-sm"
+          >
+            <FileDown className="h-4 w-4 mr-2" />
+            Export Excel
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => exportPayments('pdf')}
+            className="bg-red-700 hover:bg-red-100 text-white border-red-200 shadow-sm"
+          >
+            <FileDown className="h-4 w-4 mr-2" />
+            Export PDF
+          </Button>
+        </div>
           </CardTitle>
+         
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -148,9 +198,10 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
               <thead>
                 <tr className="border-b">
                   <th className="text-left p-3">Date</th>
+                  <th className="text-left p-3">Invoice No</th>
                   <th className="text-left p-3">{type === 'customer' ? 'Customer' : 'Vendor'}</th>
-                  <th className="text-left p-3">Amount</th>
                   <th className="text-left p-3">Notes</th>
+                  <th className="text-left p-3">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,13 +212,13 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
                     const entity = entities.find(e => 
                       type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId
                     );
-                    
                     return (
                       <tr key={payment.id} className="border-b hover:bg-gray-50">
                         <td className="p-3">{new Date(payment.date).toLocaleDateString()}</td>
-                        <td className="p-3">{entity?.name || 'N/A'}</td>
-                        <td className="p-3 font-semibold text-green-600">PKR {payment.amount.toFixed(2)}</td>
+                        <td className="p-3">{payment.invoiceNumber}</td>
+                        <td className="p-3 font-semibold text-green-600">{entity?.name || 'N/A'}</td>
                         <td className="p-3">{payment.notes || '-'}</td>
+                        <td className="p-3">{payment.amount.toFixed(2)}</td>
                       </tr>
                     );
                   })}
@@ -182,64 +233,11 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
         </CardContent>
       </Card>
 
-      {/* Payment Form Modal */}
-      <Dialog open={showPaymentForm} onOpenChange={setShowPaymentForm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record Payment</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handlePayment} className="space-y-4">
-            <div>
-              <Label>{type === 'customer' ? 'Customer' : 'Vendor'}</Label>
-              <Input
-                value={entities.find(e => e.id === selectedId)?.name || ''}
-                disabled
-                className="bg-gray-100"
-              />
-            </div>
-            <div>
-              <Label>Outstanding Balance</Label>
-              <Input
-                value={`PKR ${entities.find(e => e.id === selectedId)?.balance.toFixed(2) || '0.00'}`}
-                disabled
-                className="bg-gray-100"
-              />
-            </div>
-            <div>
-              <Label htmlFor="amount">Payment Amount (PKR)</Label>
-              <Input
-                id="amount"
-                type="number"
-                step="0.01"
-                min="0"
-                max={entities.find(e => e.id === selectedId)?.balance || 0}
-                value={paymentData.amount}
-                onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
-                placeholder="Enter payment amount"
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="notes">Notes (Optional)</Label>
-              <Textarea
-                id="notes"
-                value={paymentData.notes}
-                onChange={(e) => setPaymentData({ ...paymentData, notes: e.target.value })}
-                placeholder="Add any notes about this payment"
-                rows={3}
-              />
-            </div>
-            <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={() => setShowPaymentForm(false)}>
-                Cancel
-              </Button>
-              <Button type="submit">
-                Record Payment
-              </Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <PaymentSuccessDialog
+        isOpen={showSuccessDialog}
+        onClose={() => setShowSuccessDialog(false)}
+        payment={completedPayment}
+      />
     </div>
   );
 };
