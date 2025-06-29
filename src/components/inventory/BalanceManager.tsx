@@ -30,6 +30,7 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
   const [openPaymentCard, setOpenPaymentCard] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const entities = type === 'customer' ? customers : vendors;
   const paymentsForType = balancePayments.filter(p => 
@@ -136,7 +137,18 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
         </h3>
       </div>
       {/* Date Filters */}
-      <div className="flex flex-wrap gap-4 items-end mb-2">
+      <div className="flex flex-wrap gap-4 items-start mb-2">
+      <div >
+          <Label  htmlFor="searchTerm">Search</Label>
+          <Input
+            id="searchTerm"
+            type="text"
+            placeholder="Search by name or invoice no."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="min-w-[500px]"
+          />
+        </div>
         <div>
           <Label htmlFor="dateFrom">From</Label>
           <Input
@@ -157,13 +169,15 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
             className="min-w-[140px]"
           />
         </div>
-        <Button
+        {/* <Button
           variant="outline"
           onClick={() => { setDateFrom(''); setDateTo(''); }}
           className="h-10"
         >
           Clear
-        </Button>
+        </Button> */}
+        {/* Search Input */}
+        
       </div>
       {/* Recent Payments */}
       <Card>
@@ -206,6 +220,13 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
               </thead>
               <tbody>
                 {paymentsForType
+                  .filter(payment => {
+                    const entity = entities.find(e => type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId);
+                    const name = entity?.name?.toLowerCase() || '';
+                    const invoice = payment.invoiceNumber?.toLowerCase() || '';
+                    const term = searchTerm.toLowerCase();
+                    return name.includes(term) || invoice.includes(term);
+                  })
                   .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                   .slice(0, 10)
                   .map((payment) => {

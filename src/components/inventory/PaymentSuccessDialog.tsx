@@ -72,7 +72,7 @@ console.log('Payment object:', payment); // Debug log
             .items-table { width: 100%; border-collapse: collapse; margin: 10px 0; }
             .items-table th, .items-table td { border: 1px solid #333; padding: 3px 5px; text-align: left; font-size: 13px; }
             .items-table th { background: #007bff; color: white; font-weight: bold; }
-            .footer { font-size:11px;clear: both;display:flex;justify-content:space-between; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; color: #666; }
+            .footer { font-size:8px;clear: both;display:flex;justify-content:space-between; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; color: #666; }
             .highlight { color: #007bff; font-weight: bold; }
             .summary-table { width: 100%; border-collapse: collapse; }
             .summary-table td { border: 1px solid #333; padding: 4px 8px; font-size: 14px; }
@@ -95,7 +95,6 @@ console.log('Payment object:', payment); // Debug log
               <thead>
                 <tr>
                   <th>Customer Name</th>
-                  <th>Phone</th>
                   <th>Cash</th>
                   <th>Cheque</th>
                   <th>Cheque No</th>
@@ -106,7 +105,6 @@ console.log('Payment object:', payment); // Debug log
               <tbody>
                 <tr>
                   <td>${customerName}</td>
-                  <td>${phone}</td>
                   <td>${cash ?Number(cash).toFixed(2) : '-'}</td>
                   <td>${cheque ?+ Number(cheque).toFixed(2) : '-'}</td>
                   <td>${chequeNoVal || '-'}</td>
@@ -135,10 +133,10 @@ console.log('Payment object:', payment); // Debug log
               </tbody>
             </table>
             <div class="footer">
-              <p style="font-size: 12px;">Generated on: ${new Date().toLocaleString()}</p>
+              <p style="font-size: 8px;">Generated on: ${new Date().toLocaleString()}</p>
               <div>
-                <p>Software developer by Uzair Ahmed</p>
-                <p>03172146698</p>
+                <p>Software developer by Uzair Ahmed | 03172146698</p>
+                
               </div>
             </div>
           </div>
@@ -159,7 +157,6 @@ console.log('Payment object:', payment); // Debug log
         {
           'Invoice No': invoiceNumber,
           'Customer Name': customerName,
-          'Phone': phone,
           'Cash': cash,
           'Cheque': cheque,
           'Cheque No': chequeNoVal,
@@ -231,10 +228,6 @@ console.log('Payment object:', payment); // Debug log
                 <tr>
                   <td className="font-semibold p-2">Name</td>
                   <td className="p-2">{payment.entity?.name || 'N/A'}</td>
-                </tr>
-                <tr>
-                  <td className="font-semibold p-2">Phone</td>
-                  <td className="p-2">{payment.entity?.phoneNo || 'N/A'}</td>
                 </tr>
                 <tr>
                   <td className="font-semibold p-2">Amount</td>

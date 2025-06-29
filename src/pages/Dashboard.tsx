@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Package, Users, Truck, TrendingUp, Download, LogOut, User } from 'lucide-react';
+import { Plus, Package, Users, Truck, TrendingUp, Download, LogOut, User, DollarSign } from 'lucide-react';
 import { ProductSection } from '@/components/inventory/ProductSection';
 import { CustomerSection } from '@/components/inventory/CustomerSection';
 import { VendorSection } from '@/components/inventory/VendorSection';
@@ -9,15 +9,17 @@ import { BatchTransactionForm } from '@/components/inventory/BatchTransactionFor
 import { TransactionHistory } from '@/components/inventory/TransactionHistory';
 import { OverviewDashboard } from '@/components/inventory/OverviewDashboard';
 import { BalanceManager } from '@/components/inventory/BalanceManager';
+import { ExpensesSection } from '@/components/inventory/ExpensesSection';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { useAuthStore } from '@/store/authStore';
 
 const Dashboard = () => {
   const [activeSection, setActiveSection] = useState('overview');
   const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [transactionType, setTransactionType] = useState<'sale' | 'purchase'>('sale');
+  const [transactionType, setTransactionType] = useState<'sale' | 'purchase' | 'return'>('sale');
+  const [expenses, setExpenses] = useState<{ amount: number; desc: string; date: string }[]>([]);
   
-  const { fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments } = useInventoryStore();
+  const { fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments, balancePayments, products, customers, vendors, transactions } = useInventoryStore();
   const { currentUser, logout } = useAuthStore();
 
   useEffect(() => {
@@ -28,10 +30,16 @@ const Dashboard = () => {
     fetchBalancePayments();
   }, [fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments]);
 
-  const handleNewTransaction = (type: 'sale' | 'purchase') => {
+  const handleNewTransaction = (type: 'sale' | 'purchase' | 'return') => {
     setTransactionType(type);
     setShowTransactionForm(true);
   };
+
+  // Calculate cash in hand (same as dashboard)
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalCustomerPayments = balancePayments.filter(p => p.type === 'customer_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalVendorPayments = balancePayments.filter(p => p.type === 'vendor_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const cashInHand = totalCustomerPayments - totalVendorPayments - totalExpenses;
 
   const renderActiveSection = () => {
     switch (activeSection) {
@@ -53,8 +61,10 @@ const Dashboard = () => {
         );
       case 'transactions':
         return <TransactionHistory />;
+      case 'expenses':
+        return <ExpensesSection expenses={expenses} setExpenses={setExpenses} cashInHandBeforeExpenses={cashInHand} />;
       default:
-        return <OverviewDashboard />;
+        return <OverviewDashboard expenses={expenses} setExpenses={setExpenses} />;
     }
   };
 
@@ -90,6 +100,13 @@ const Dashboard = () => {
                   <Plus className="h-4 w-4 mr-2" />
                   New Purchase
                 </Button>
+                <Button
+                  onClick={() => handleNewTransaction('return')}
+                  className="bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white shadow-lg transform hover:scale-105 transition-all duration-200"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Return
+                </Button>
               </div>
               
               <div className="flex items-center space-x-3 pl-4 border-l border-gray-200">
@@ -121,7 +138,8 @@ const Dashboard = () => {
               { key: 'products', label: 'Products', icon: Package, color: 'text-green-600' },
               { key: 'customers', label: 'Customers', icon: Users, color: 'text-blue-600' },
               { key: 'vendors', label: 'Vendors', icon: Truck, color: 'text-orange-600' },
-              { key: 'transactions', label: 'Transactions', icon: Download, color: 'text-red-600' }
+              { key: 'transactions', label: 'Transactions', icon: Download, color: 'text-red-600' },
+              { key: 'expenses', label: 'Expenses', icon: DollarSign, color: 'text-blue-600' },
             ].map(({ key, label, icon: Icon, color }) => (
               <button
                 key={key}

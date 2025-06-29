@@ -1,17 +1,27 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Package, Users, Truck, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Calendar, BarChart3 } from 'lucide-react';
+import { Package, Users, Truck, TrendingUp, TrendingDown, AlertTriangle, DollarSign, Calendar, BarChart3, Plus } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
+import { SensitiveCard } from '@/components/ui/SensitiveCard';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
 
-export const OverviewDashboard = () => {
-  const { products, customers, vendors, transactions, fetchProducts, fetchCustomers, fetchVendors, fetchTransactions } = useInventoryStore();
+export const OverviewDashboard = ({ expenses, setExpenses }) => {
+  const { products, customers, vendors, transactions, fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, balancePayments, fetchBalancePayments } = useInventoryStore();
+  const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [expenseAmount, setExpenseAmount] = useState('');
+  const [expenseDesc, setExpenseDesc] = useState('');
+  const [expenseError, setExpenseError] = useState('');
 
   useEffect(() => {
     fetchProducts();
     fetchCustomers();
     fetchVendors();
     fetchTransactions();
-  }, [fetchProducts, fetchCustomers, fetchVendors, fetchTransactions]);
+    fetchBalancePayments();
+  }, [fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments]);
 
   // Calculate current month transactions
   const currentMonth = new Date().getMonth();
@@ -91,6 +101,14 @@ export const OverviewDashboard = () => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
+  // Calculate total expenses
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Calculate cash in hand: sum of all customer payments - sum of all vendor payments - expenses
+  const totalCustomerPayments = balancePayments.filter(p => p.type === 'customer_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const totalVendorPayments = balancePayments.filter(p => p.type === 'vendor_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
+  const cashInHand = totalCustomerPayments - totalVendorPayments - totalExpenses;
+
   return (
     <div className="space-y-6">
       {/* Key Metrics */}
@@ -108,85 +126,77 @@ export const OverviewDashboard = () => {
           </CardContent>
         </Card>
 
-        <Card className="bg-green-100 text-green-900 border border-green-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Sales</CardTitle>
-            <DollarSign className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">PKR {stats.currentMonthSales.toFixed(2)}</div>
-            <p className="text-xs opacity-80 flex items-center">
+        {/* Sensitive: Monthly Sales */}
+        <SensitiveCard
+          label="Monthly Sales"
+          value={<>
+            PKR {stats.currentMonthSales.toFixed(2)}
+            <div className="text-xs opacity-80 flex items-center mt-1">
               {salesGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
               ) : (
                 <TrendingDown className="h-3 w-3 mr-1" />
               )}
               {Math.abs(salesGrowth).toFixed(1)}% from last month
-            </p>
-          </CardContent>
-        </Card>
+            </div>
+          </>}
+          icon={<DollarSign className="h-4 w-4" />}
+          className="bg-green-100 text-green-900 border border-green-200"
+        />
 
-        <Card className="bg-purple-100 text-purple-900 border border-purple-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Purchases</CardTitle>
-            <Truck className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">PKR {stats.currentMonthPurchases.toFixed(2)}</div>
-            <p className="text-xs opacity-80 flex items-center">
+        {/* Sensitive: Monthly Purchases */}
+        <SensitiveCard
+          label="Monthly Purchases"
+          value={<>
+            PKR {stats.currentMonthPurchases.toFixed(2)}
+            <div className="text-xs opacity-80 flex items-center mt-1">
               {purchaseGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
               ) : (
                 <TrendingDown className="h-3 w-3 mr-1" />
               )}
               {Math.abs(purchaseGrowth).toFixed(1)}% from last month
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-orange-100 text-orange-900 border border-orange-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Gross Income</CardTitle>
-            <BarChart3 className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              PKR {(stats.currentMonthSales - stats.currentMonthPurchases).toFixed(2)}
             </div>
-            <p className="text-xs opacity-80">
-              Gross income this month
-            </p>
-          </CardContent>
-        </Card>
+          </>}
+          icon={<Truck className="h-4 w-4" />}
+          className="bg-purple-100 text-purple-900 border border-purple-200"
+        />
+
+        {/* Sensitive: Cash in Hand (replaces Gross Income) */}
+        <SensitiveCard
+          label="Cash in Hand"
+          value={<>
+            PKR {cashInHand.toFixed(2)}
+            <div className="text-xs opacity-80 mt-1">Total after expenses</div>
+          </>}
+          icon={<DollarSign className="h-4 w-4" />}
+          className="bg-blue-100 text-blue-900 border border-blue-200"
+        />
       </div>
 
       {/* Balance Overview */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="bg-red-100 text-red-900 border border-red-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Customer Outstanding</CardTitle>
-            <Users className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">PKR {stats.totalCustomerBalance.toFixed(2)}</div>
-            <p className="text-xs opacity-80">
-              Amount customers owe us
-            </p>
-          </CardContent>
-        </Card>
+        {/* Sensitive: Customer Outstanding */}
+        <SensitiveCard
+          label="Customer Outstanding"
+          value={<>
+            PKR {stats.totalCustomerBalance.toFixed(2)}
+            <div className="text-xs opacity-80 mt-1">Amount customers owe us</div>
+          </>}
+          icon={<Users className="h-4 w-4" />}
+          className="bg-red-100 text-red-900 border border-red-200"
+        />
 
-        <Card className="bg-yellow-100 text-yellow-900 border border-yellow-200">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Vendor Outstanding</CardTitle>
-            <Truck className="h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">PKR {stats.totalVendorBalance.toFixed(2)}</div>
-            <p className="text-xs opacity-80">
-              Amount we owe vendors
-            </p>
-          </CardContent>
-        </Card>
+        {/* Sensitive: Vendor Outstanding */}
+        <SensitiveCard
+          label="Vendor Outstanding"
+          value={<>
+            PKR {stats.totalVendorBalance.toFixed(2)}
+            <div className="text-xs opacity-80 mt-1">Amount we owe vendors</div>
+          </>}
+          icon={<Truck className="h-4 w-4" />}
+          className="bg-yellow-100 text-yellow-900 border border-yellow-200"
+        />
       </div>
 
       {/* Additional Stats */}
@@ -261,107 +271,10 @@ export const OverviewDashboard = () => {
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      {/* Monthly Sales & Purchases Summary */}
-      <div className="mt-8">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-lg font-bold">Previous Month Sales & Purchases Summary</h2>
-          {/* Export buttons will be added here */}
-        </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-            <thead>
-              <tr>
-                <th className="px-4 py-2 border-b">Month</th>
-                <th className="px-4 py-2 border-b">Sales</th>
-                <th className="px-4 py-2 border-b">Purchases</th>
-                <th className="px-4 py-2 border-b">Net</th>
-              </tr>
-            </thead>
-            <tbody>
-              {getPreviousMonthSummary(transactions).map((row) => (
-                <tr key={row.month}>
-                  <td className="px-4 py-2 border-b">{row.month}</td>
-                  <td className="px-4 py-2 border-b text-green-700 font-semibold">PKR {row.sales.toFixed(2)}</td>
-                  <td className="px-4 py-2 border-b text-blue-700 font-semibold">PKR {row.purchases.toFixed(2)}</td>
-                  <td className="px-4 py-2 border-b font-bold {row.net >= 0 ? 'text-green-700' : 'text-red-700'}">PKR {row.net.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Top Selling Products & Recent Transactions */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Selling Products (This Month)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {topSellingProducts.length > 0 ? (
-              <div className="space-y-3">
-                {topSellingProducts.map(([product, quantity], index) => (
-                  <div key={product} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <span className="w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-bold mr-3">
-                        {index + 1}
-                      </span>
-                      <span>{product}</span>
-                    </div>
-                    <span className="font-bold">{quantity} units</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No sales this month</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Transactions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentTransactions.length > 0 ? (
-              <div className="space-y-3">
-                {recentTransactions.map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between border-b pb-2">
-                    <div>
-                      <p className="font-medium">
-                        {(transaction.items && Array.isArray(transaction.items) ? transaction.items.length : 0)} item{(transaction.items && Array.isArray(transaction.items) && transaction.items.length > 1) ? 's' : ''}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {new Date(transaction.date).toLocaleDateString()} • 
-                        <span className={`ml-1 ${transaction.type === 'sale' ? 'text-green-600' : transaction.type === 'return' ? 'text-yellow-600' : 'text-blue-600'}`}>
-                          {transaction.type === 'sale' ? 'Sale' : transaction.type === 'return' ? 'Return' : 'Purchase'}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold">PKR {(transaction.totalAmount || 0).toFixed(2)}</p>
-                      <p className="text-sm text-gray-500">
-                        {transaction.items && Array.isArray(transaction.items) 
-                          ? transaction.items.reduce((sum, item) => sum + (item.quantity || 0), 0)
-                          : 0
-                        } units
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500">No recent transactions</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      </div>          
     </div>
   );
 };
-
 function getMonthlySummary(transactions: any[]) {
   // Group transactions by month and year
   const summary: Record<string, { sales: number; purchases: number }> = {};
@@ -407,3 +320,4 @@ function getPreviousMonthSummary(transactions: any[]) {
     net: summary.sales - summary.purchases,
   }];
 }
+

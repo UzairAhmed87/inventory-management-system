@@ -39,6 +39,9 @@ export const VendorSection = () => {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [completedPayment, setCompletedPayment] = useState<CompletedPayment | null>(null);
   const [monthlySummaryVendor, setMonthlySummaryVendor] = useState<string | null>(null);
+  const [showOutstandingDialog, setShowOutstandingDialog] = useState(false);
+  const [outstandingDateTo, setOutstandingDateTo] = useState('');
+  const [outstandingData, setOutstandingData] = useState<any[]>([]);
 
   useEffect(() => {
     fetchVendors();
@@ -142,9 +145,9 @@ export const VendorSection = () => {
     return ledger.map(entry => ({
       Date: entry.date.toLocaleDateString(),
       Description: Array.isArray(entry.description) ? entry.description.join('\n') : entry.description,
-      Debit: entry.debit > 0 ? `PKR ${entry.debit.toFixed(2)}` : '',
-      Credit: entry.credit > 0 ? `PKR ${entry.credit.toFixed(2)}` : '',
-      Balance: `PKR ${entry.balance.toFixed(2)}`,
+      Debit: entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '',
+      Credit: entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '',
+      Balance: `${entry.balance.toFixed(2)}`,
     }));
   };
 
@@ -191,55 +194,103 @@ export const VendorSection = () => {
     vendor.phoneNo.includes(searchTerm)
   );
 
+  const getAllOutstandingBalances = (dateTo: string) => {
+    return vendors.map(vendor => {
+      const vendorTransactions = transactions
+        .filter(t => t.vendorId === vendor.id && (t.type === 'purchase' || t.type === 'return'))
+        .filter(t => {
+          if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
+          return true;
+        });
+      const vendorPayments = balancePayments
+        .filter(p => p.vendorId === vendor.id && p.type === 'vendor_payment')
+        .filter(p => {
+          if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
+          return true;
+        });
+      let runningBalance = 0;
+      const ledgerEntries = [
+        ...vendorTransactions.map(t => ({
+          debit: t.type === 'purchase' ? t.totalAmount : 0,
+          credit: t.type === 'return' ? t.totalAmount : 0,
+        })),
+        ...vendorPayments.map(p => ({
+          debit: 0,
+          credit: p.amount,
+        })),
+      ];
+      ledgerEntries.forEach(entry => {
+        runningBalance = runningBalance + entry.debit - entry.credit;
+      });
+      return {
+        Name: vendor.name,
+        'Phone No': vendor.phoneNo,
+        'Outstanding Balance': runningBalance,
+      };
+    }).filter(row => row['Outstanding Balance'] > 0);
+  };
+
+  useEffect(() => {
+    if (showOutstandingDialog) {
+      setOutstandingData(getAllOutstandingBalances(outstandingDateTo));
+    }
+    // eslint-disable-next-line
+  }, [showOutstandingDialog, outstandingDateTo, vendors, transactions, balancePayments]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Vendors</h2>
-        <Dialog open={showForm} onOpenChange={setShowForm}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Vendor
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Vendor Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter vendor name"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="phoneNo">Phone Number</Label>
-                <Input
-                  id="phoneNo"
-                  value={formData.phoneNo}
-                  onChange={(e) => setFormData({ ...formData, phoneNo: e.target.value })}
-                  placeholder="Enter phone number"
-                  required
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={resetFormData}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {editingVendor ? 'Update' : 'Add'} Vendor
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Dialog open={showForm} onOpenChange={setShowForm}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Vendor
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingVendor ? 'Edit Vendor' : 'Add New Vendor'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Vendor Name</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Enter vendor name"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="phoneNo">Phone Number</Label>
+                  <Input
+                    id="phoneNo"
+                    value={formData.phoneNo}
+                    onChange={(e) => setFormData({ ...formData, phoneNo: e.target.value })}
+                    placeholder="Enter phone number"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={resetFormData}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    {editingVendor ? 'Update' : 'Add'} Vendor
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" onClick={() => setShowOutstandingDialog(true)}>
+            Outstanding Balances
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -296,13 +347,6 @@ export const VendorSection = () => {
                   className="text-red-600 hover:text-red-700"
                 >
                   <Trash className="h-3 w-3" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setMonthlySummaryVendor(vendor.id)}
-                >
-                  Monthly Summary
                 </Button>
               </div>
             </CardHeader>
@@ -460,16 +504,16 @@ export const VendorSection = () => {
                         entry.description
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{entry.debit > 0 ? `PKR ${entry.debit.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="text-right">{entry.credit > 0 ? `PKR ${entry.credit.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="text-right">PKR {entry.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="text-right">{entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="text-right">{entry.balance.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
                 {selectedVendor && getVendorLedger(selectedVendor).length > 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
                     <TableCell className="font-bold text-right">
-                      PKR {getVendorLedger(selectedVendor)[getVendorLedger(selectedVendor).length - 1].balance.toFixed(2)}
+                      {getVendorLedger(selectedVendor)[getVendorLedger(selectedVendor).length - 1].balance.toFixed(2)}
                     </TableCell>
                   </TableRow>
                 )}
@@ -480,123 +524,80 @@ export const VendorSection = () => {
                 )}
               </TableBody>
             </Table>
-            <div className="flex justify-between items-end mt-4 text-xs text-gray-600">
+            {/* <div className="flex justify-between items-end mt-4 text-xs text-gray-600">
               <div>Generated: {new Date().toLocaleString()}</div>
               <div className="text-right">
                 <div>Software developed by Uzair Ahmed</div>
                 <div>03172146698</div>
               </div>
-            </div>
+            </div> */}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Monthly Purchase Summary for Vendor */}
-      {selectedVendor && (
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-bold">Monthly Purchases & Payments Summary</h2>
-            <div className="flex gap-2">
-              <PdfExportButton
-                document={
-                  <LedgerPDF
-                    data={exportVendorMonthlySummaryLedgerPDFData(selectedVendor) || []}
-                    title={`${vendors.find(v => v.id === selectedVendor)?.name} - Monthly Summary`}
-                    subtitle={`All Months`}
-                    companyName="Company Name"
-                  />
-                }
-                fileName={`${vendors.find(v => v.id === selectedVendor)?.name}_Monthly_Summary.pdf`}
+      <Dialog open={showOutstandingDialog} onOpenChange={setShowOutstandingDialog}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Outstanding Vendor Balances</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-4 mb-4">
+            <div>
+              <Label htmlFor="outstandingDateTo">Till Date</Label>
+              <Input
+                id="outstandingDateTo"
+                type="date"
+                value={outstandingDateTo}
+                onChange={e => setOutstandingDateTo(e.target.value)}
               />
-              <Button onClick={() => {
-                const data = exportVendorMonthlySummaryData(selectedVendor);
-                if (data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === selectedVendor)?.name}_Monthly_Summary`);
-              }}>
+            </div>
+            <div className="flex items-end gap-2">
+              <Button
+                onClick={() => ExportUtils.exportToExcel(outstandingData.map(row => ({
+                  'Name': row['Name'],
+                  'Phone No': row['Phone No'],
+                  'Outstanding Balance': row['Outstanding Balance']
+                })), 'Outstanding_Vendors')}
+                disabled={outstandingData.length === 0}
+              >
                 Export Excel
+              </Button>
+              <Button
+                onClick={() => ExportUtils.exportOutstandingLedgerPDF(
+                  outstandingData,
+                  {
+                    title: 'Vendor Outstanding',
+                    dateRange: outstandingDateTo ? `Till ${outstandingDateTo}` : 'All Time',
+                    companyName: 'Company Name',
+                    fileName: 'Outstanding_Vendors_Ledger'
+                  }
+                )}
+                disabled={outstandingData.length === 0}
+              >
+                Export PDF
               </Button>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+          <div className="overflow-x-auto max-h-[400px]">
+            <table className="min-w-full text-sm border">
               <thead>
                 <tr>
-                  <th className="px-4 py-2 border-b">Month</th>
-                  <th className="px-4 py-2 border-b">Purchases</th>
-                  <th className="px-4 py-2 border-b">Payments</th>
-                  <th className="px-4 py-2 border-b">Net</th>
+                  <th className="border px-2 py-1 text-left">Name</th>
+                  <th className="border px-2 py-1 text-left">Phone No</th>
+                  <th className="border px-2 py-1 text-left">Outstanding Balance</th>
                 </tr>
               </thead>
               <tbody>
-                {getVendorMonthlySummary(selectedVendor).map((row) => (
-                  <tr key={row.month}>
-                    <td className="px-4 py-2 border-b">{row.month}</td>
-                    <td className="px-4 py-2 border-b text-blue-700 font-semibold">{row.purchases.toFixed(2)}</td>
-                    <td className="px-4 py-2 border-b text-green-700 font-semibold">{row.payments.toFixed(2)}</td>
-                    <td className="px-4 py-2 border-b font-bold {row.net >= 0 ? 'text-blue-700' : 'text-red-700'}">PKR {row.net.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      <Dialog open={!!monthlySummaryVendor} onOpenChange={(isOpen) => !isOpen && setMonthlySummaryVendor(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>
-              Monthly Purchase Transactions for {vendors.find(v => v.id === monthlySummaryVendor)?.name}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex gap-2 mb-2">
-            <PdfExportButton
-              document={
-                <MonthlySummaryPDF
-                  data={exportVendorMonthlyTransactionsPDF(monthlySummaryVendor) || []}
-                  title={`${vendors.find(v => v.id === monthlySummaryVendor)?.name} - Monthly Purchase Summary`}
-                  subtitle={`${getVendorMonthlyTransactionsWithMonthBalance(monthlySummaryVendor).map(g => g.month).join(', ')}`}
-                  companyName="Company Name"
-                />
-              }
-              fileName={`${vendors.find(v => v.id === monthlySummaryVendor)?.name}_Monthly_Purchase_Transactions.pdf`}
-            />
-            <Button onClick={() => {
-              const data = exportVendorMonthlyTransactionsPDF(monthlySummaryVendor);
-              if (data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === monthlySummaryVendor)?.name}_Monthly_Purchase_Transactions`);
-            }}>
-              Export Excel
-            </Button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 border-b">Date</th>
-                  <th className="px-4 py-2 border-b">Invoice No</th>
-                  <th className="px-4 py-2 border-b">Description</th>
-                  <th className="px-4 py-2 border-b">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getVendorMonthlyTransactionsWithMonthBalance(monthlySummaryVendor).map(group => (
-                  <React.Fragment key={group.month}>
-                    <tr className="bg-gray-100 font-bold">
-                      <td colSpan={4}>Monthly Purchases for {group.month}</td>
+                {outstandingData.length === 0 ? (
+                  <tr><td colSpan={3} className="text-center py-4">No outstanding balances found.</td></tr>
+                ) : (
+                  outstandingData.map((row, idx) => (
+                    <tr key={idx}>
+                      <td className="border px-2 py-1">{row['Name']}</td>
+                      <td className="border px-2 py-1">{row['Phone No']}</td>
+                      <td className="border px-2 py-1 ">{row['Outstanding Balance'].toFixed(2)}</td>
                     </tr>
-                    {group.transactions.map((t, idx) => (
-                      <tr key={t.id}>
-                        <td className="px-4 py-2 border-b">{t.date ? new Date(t.date).toLocaleDateString() : ''}</td>
-                        <td className="px-4 py-2 border-b">{t.invoiceNumber}</td>
-                        <td className="px-4 py-2 border-b">{t.items.map(item => `${item.productName} x ${item.quantity} @ ${item.price.toFixed(2)}`).join(', ')}</td>
-                        <td className="px-4 py-2 border-b text-blue-700 font-semibold">PKR {(t.type === 'purchase' ? t.totalAmount : -t.totalAmount).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-bold bg-gray-200">
-                      <td colSpan={3} className="text-right">Total</td>
-                      <td>PKR {group.monthBalance.toFixed(2)}</td>
-                    </tr>
-                  </React.Fragment>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -605,98 +606,3 @@ export const VendorSection = () => {
     </div>
   );
 };
-
-function getVendorMonthlySummary(vendorId: string) {
-  // Group purchases and payments by month for the selected vendor
-  const { transactions, balancePayments } = useInventoryStore.getState();
-  const summary: Record<string, { purchases: number; payments: number }> = {};
-  transactions.filter(t => t.vendorId === vendorId && (t.type === 'purchase' || t.type === 'return')).forEach(t => {
-    if (!t.date) return;
-    const d = new Date(t.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { purchases: 0, payments: 0 };
-    if (t.type === 'purchase') summary[key].purchases += t.totalAmount || 0;
-    if (t.type === 'return') summary[key].purchases -= t.totalAmount || 0;
-  });
-  balancePayments.filter(p => p.vendorId === vendorId && p.type === 'vendor_payment').forEach(p => {
-    if (!p.date) return;
-    const d = new Date(p.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { purchases: 0, payments: 0 };
-    summary[key].payments += p.amount || 0;
-  });
-  return Object.entries(summary)
-    .map(([key, val]) => ({
-      month: new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }),
-      purchases: val.purchases,
-      payments: val.payments,
-      net: val.purchases - val.payments,
-    }))
-    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-}
-
-function exportVendorMonthlySummaryData(vendorId: string) {
-  return getVendorMonthlySummary(vendorId).map(row => ({
-    Month: row.month,
-    Purchases: `${row.purchases.toFixed(2)}`,
-    Payments: `${row.payments.toFixed(2)}`,
-    Net: `${row.net.toFixed(2)}`,
-  }));
-}
-
-function exportVendorMonthlySummaryLedgerPDFData(vendorId: string) {
-  return getVendorMonthlySummary(vendorId).map(row => ({
-    Date: row.month,
-    Description: 'Monthly Summary',
-    Debit: row.purchases > 0 ? `PKR ${row.purchases.toFixed(2)}` : '',
-    Credit: row.payments > 0 ? `PKR ${row.payments.toFixed(2)}` : '',
-    Balance: `${row.net.toFixed(2)}`,
-  }));
-}
-
-function getVendorMonthlyTransactionsWithMonthBalance(vendorId) {
-  const { transactions } = useInventoryStore.getState();
-  const summary = {};
-  transactions.filter(t => t.vendorId === vendorId && (t.type === 'purchase' || t.type === 'return')).forEach(t => {
-    if (!t.date) return;
-    const d = new Date(t.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { transactions: [], month: key, monthBalance: 0 };
-    if (t.type === 'purchase') {
-      summary[key].transactions.push(t);
-      summary[key].monthBalance += t.totalAmount || 0;
-    } else if (t.type === 'return') {
-      summary[key].transactions.push(t);
-      summary[key].monthBalance -= t.totalAmount || 0;
-    }
-  });
-  return Object.entries(summary).map(([key, val]) => {
-    const v = val as { transactions: any[]; monthBalance: number };
-    return {
-      transactions: v.transactions,
-      monthBalance: v.monthBalance,
-      month: new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }),
-    };
-  });
-}
-
-function exportVendorMonthlyTransactionsPDF(vendorId) {
-  const grouped = getVendorMonthlyTransactionsWithMonthBalance(vendorId);
-  const rows = grouped.flatMap(g => [
-    // Transactions
-    ...g.transactions.map(t => ({
-      Date: t.date ? new Date(t.date).toLocaleDateString() : '',
-      'Invoice No': t.invoiceNumber,
-      Description: t.items.map(item => `${item.productName} x ${item.quantity} @ ${item.price.toFixed(2)}`).join(', '),
-      Amount: `${(t.type === 'purchase' ? t.totalAmount : -t.totalAmount).toFixed(2)}`,
-    })),
-    // Total row
-    {
-      Date: '',
-      'Invoice No': '',
-      Description: 'Total Balance',
-      Amount: ` ${g.monthBalance.toFixed(2)}`,
-    }
-  ]);
-  return rows;
-}

@@ -91,6 +91,8 @@ const pdfStyles = StyleSheet.create({
     bottom: 24,
     left: 24,
     right: 24,
+    display:'flex',
+    justifyContent:'space-between',
     textAlign: 'right',
     fontSize: 8,
     color: 'grey',
@@ -129,12 +131,9 @@ export const LedgerPDF = ({ data, title, subtitle, companyName }: { data: Ledger
             </View>
           )}
         </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 16 }}>
-          <Text style={{ fontSize: 8, color: 'grey' }}>Generated: {generatedDate}</Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 8, color: 'grey' }}>Software developed by Uzair Ahmed</Text>
-            <Text style={{ fontSize: 8, color: 'grey' }}>03172146698</Text>
-          </View>
+        <View style={pdfStyles.footer} fixed>
+          <Text style={{ textAlign: 'left' }}>Generated: {generatedDate}</Text>
+          <Text style={{ textAlign: 'right' }}>Software developed by Uzair Ahmed | 03172146698</Text>
         </View>
       </Page>
     </Document>

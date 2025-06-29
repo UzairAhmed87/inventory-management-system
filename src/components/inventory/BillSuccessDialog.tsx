@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, Download, X } from 'lucide-react';
 import { ExportUtils } from '@/utils/exportUtils';
 import { CompletedBatchTransaction } from '@/types';
-import { Customer, Vendor } from '@/store/inventoryStore';
+import { useInventoryStore } from '@/store/inventoryStore';
 
 interface BillSuccessDialogProps {
   isOpen: boolean;
@@ -21,7 +21,8 @@ export const BillSuccessDialog: React.FC<BillSuccessDialogProps> = ({
 
   const { type, customer, vendor, customerId, vendorId } = transaction;
 
-  const { customers, vendors } = require('@/store/inventoryStore');
+  const customers = useInventoryStore(state => state.customers);
+  const vendors = useInventoryStore(state => state.vendors);
   // Fallback: If customer/vendor is missing, look up by ID
   const resolvedCustomer = customer || (customerId ? customers.find((c: any) => c.id === customerId) : null);
   const resolvedVendor = vendor || (vendorId ? vendors.find((v: any) => v.id === vendorId) : null);

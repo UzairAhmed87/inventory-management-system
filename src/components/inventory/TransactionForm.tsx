@@ -100,8 +100,8 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose,
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (type === 'return') {
-      // Always use the originalTransaction's customerId/vendorId for returns
+    if (type === 'return' && originalTransaction) {
+      // Special return logic for originalTransaction
       const customerId = originalTransaction.customerId || undefined;
       const vendorId = originalTransaction.vendorId || undefined;
       let hasReturn = false;

@@ -4,14 +4,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash, Package, Search, Filter } from 'lucide-react';
-import { useInventoryStore, Product } from '@/store/inventoryStore';
+import { Plus, Edit, Trash, Package, Search, Filter, Calendar } from 'lucide-react';
+import { useInventoryStore, Product, Transaction } from '@/store/inventoryStore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { ExportUtils } from '@/utils/exportUtils';
 
 type StockFilter = 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
 
 export const ProductSection = () => {
-  const { products, addProduct, updateProduct, deleteProduct, fetchProducts } = useInventoryStore();
+  const { products, addProduct, updateProduct, deleteProduct, fetchProducts, transactions, fetchTransactions } = useInventoryStore();
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -20,10 +21,15 @@ export const ProductSection = () => {
     name: '',
     quantity: '',
   });
+  const [showStockReport, setShowStockReport] = useState(false);
+  const [stockReportDate, setStockReportDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [stockReport, setStockReport] = useState<{ name: string; quantity: number }[]>([]);
+  const [loadingStock, setLoadingStock] = useState(false);
 
   useEffect(() => {
     fetchProducts();
-  }, [fetchProducts]);
+    fetchTransactions();
+  }, [fetchProducts, fetchTransactions]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,56 +90,162 @@ export const ProductSection = () => {
     return matchesSearch && matchesFilter;
   });
 
+  // Calculate stock as of a given date
+  const calculateStockAsOfDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    // For each product, calculate initial quantity + purchases/returns - sales up to and including the date
+    return products.map(product => {
+      let qty = 0;
+      // Find all transactions up to the date
+      transactions.forEach(t => {
+        if (!t.date) return;
+        const tDate = new Date(t.date);
+        if (tDate > date) return;
+        t.items.forEach(item => {
+          if (item.productId === product.id) {
+            if (t.type === 'purchase' || t.type === 'return') {
+              qty += item.quantity;
+            } else if (t.type === 'sale') {
+              qty -= item.quantity;
+            }
+          }
+        });
+      });
+      // Add initial quantity if product was created before or on the date
+      if (!product.createdAt || new Date(product.createdAt) <= date) {
+        qty += product.quantity;
+      }
+      return { name: product.name, quantity: qty };
+    });
+  };
+
+  const handleShowStockReport = () => {
+    setLoadingStock(true);
+    setTimeout(() => {
+      setStockReport(calculateStockAsOfDate(stockReportDate));
+      setLoadingStock(false);
+    }, 100); // Simulate async
+  };
+
+  const handleExport = (format: 'pdf' | 'excel') => {
+    const data = stockReport.map(row => ({ Product: row.name, Quantity: row.quantity }));
+    if (format === 'pdf') {
+      ExportUtils.exportToPDF(data, 'Stock Report', `As of ${stockReportDate}`);
+    } else {
+      ExportUtils.exportToExcel(data, `Stock_Report_${stockReportDate}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Products</h2>
-        <Dialog open={showForm} onOpenChange={setShowForm}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Product
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {editingProduct ? 'Edit Product' : 'Add New Product'}
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Product Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter product name"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input
-                  id="quantity"
-                  type="number"
-                  value={formData.quantity}
-                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  placeholder="Enter quantity"
-                  required
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  Cancel
+        <div className="flex gap-2">
+          <Dialog open={showForm} onOpenChange={setShowForm}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Product
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>
+                  {editingProduct ? 'Edit Product' : 'Add New Product'}
+                </DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Product Name</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Enter product name"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="quantity">Quantity</Label>
+                  <Input
+                    id="quantity"
+                    type="number"
+                    value={formData.quantity}
+                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                    placeholder="Enter quantity"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={resetForm}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    {editingProduct ? 'Update' : 'Add'} Product
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+          {/* Stock Report Button */}
+          <Dialog open={showStockReport} onOpenChange={setShowStockReport}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="flex items-center gap-2" onClick={() => setShowStockReport(true)}>
+                <Calendar className="h-4 w-4" />
+                Stock Report
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <div className="text-center mb-2">
+                  <div className="text-lg font-bold text-blue-900">Company Name</div>
+                  <div className="text-xl font-semibold mt-1">Stock Report</div>
+                  <div className="text-sm text-gray-600 mt-1">As of {stockReportDate}</div>
+                </div>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="stock-date">Select Date</Label>
+                  <Input
+                    id="stock-date"
+                    type="date"
+                    value={stockReportDate}
+                    onChange={e => setStockReportDate(e.target.value)}
+                  />
+                </div>
+                <Button onClick={handleShowStockReport} disabled={loadingStock} className="w-full">
+                  {loadingStock ? 'Loading...' : 'Show Stock'}
                 </Button>
-                <Button type="submit">
-                  {editingProduct ? 'Update' : 'Add'} Product
-                </Button>
+                {stockReport.length > 0 && (
+                  <>
+                    <div className="overflow-x-auto max-h-64 border rounded">
+                      <table className="min-w-full text-sm border border-gray-300">
+                        <thead>
+                          <tr className="bg-gray-200">
+                            <th className="px-2 py-1 text-left border border-gray-300">Product</th>
+                            <th className="px-2 py-1 text-right border border-gray-300">Quantity</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {stockReport.map((row, idx) => (
+                            <tr key={idx}>
+                              <td className="px-2 py-1 border border-gray-300">{row.name}</td>
+                              <td className="px-2 py-1 text-right border border-gray-300">{row.quantity}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <Button variant="outline" onClick={() => handleExport('pdf')}>Export PDF</Button>
+                      <Button variant="outline" onClick={() => handleExport('excel')}>Export Excel</Button>
+                    </div>
+                  </>
+                )}
               </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Search and Filter Controls */}

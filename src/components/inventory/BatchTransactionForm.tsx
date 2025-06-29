@@ -37,6 +37,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   const [openVendor, setOpenVendor] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<CompletedBatchTransaction | null>(null);
+  const [returnPartyType, setReturnPartyType] = useState<'customer' | 'vendor'>('customer');
 
   const addItem = useCallback(() => {
     setItems(prevItems => {
@@ -134,6 +135,24 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
       return;
     }
 
+    if (type === 'return' && returnPartyType === 'customer' && !customerId) {
+      toast({
+        title: "Error",
+        description: "Please select a customer for return",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (type === 'return' && returnPartyType === 'vendor' && !vendorId) {
+      toast({
+        title: "Error",
+        description: "Please select a vendor for return",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Check stock for sales
     if (type === 'sale') {
       for (const item of validItems) {
@@ -159,8 +178,8 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
 
     const transactionData = {
       type,
-      customerId: type === 'sale' ? customerId : undefined,
-      vendorId: type === 'purchase' ? vendorId : undefined,
+      customerId: type === 'sale' ? customerId : (type === 'return' && returnPartyType === 'customer' ? customerId : undefined),
+      vendorId: type === 'purchase' ? vendorId : (type === 'return' && returnPartyType === 'vendor' ? vendorId : undefined),
       items: validItems.map(({ id, ...item }) => item),
       totalAmount: validItems.reduce((sum, item) => sum + item.totalPrice, 0),
       date: new Date().toISOString(),
@@ -215,17 +234,23 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
         <Card className="w-full max-w-6xl max-h-[90vh] overflow-y-auto bg-white shadow-2xl">
-          <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-4 ${type == 'purchase'? 'bg-gradient-to-r from-blue-600 to-blue-700':'bg-gradient-to-r from-green-600 to-green-700'}  text-white rounded-t-lg`}>
+          <CardHeader className={`flex flex-row items-center justify-between space-y-0 pb-4 ${type === 'purchase' ? 'bg-gradient-to-r from-blue-600 to-blue-700' : type === 'sale' ? 'bg-gradient-to-r from-green-600 to-green-700' : 'bg-gradient-to-r from-yellow-500 to-yellow-600'} text-white rounded-t-lg`}>
             <div className="flex items-center space-x-3">
               {type === 'sale' ? (
                 <ShoppingCart className="h-6 w-6" />
-              ) : (
+              ) : type === 'purchase' ? (
                 <Package className="h-6 w-6" />
+              ) : (
+                <Package className="h-6 w-6 text-yellow-900" />
               )}
               <CardTitle className="text-xl">
                 {isEditMode
-                  ? type === 'sale' ? 'Edit Sale Transaction' : 'Edit Purchase Transaction'
-                  : type === 'sale' ? 'New Sale Transaction' : 'New Purchase Transaction'}
+                  ? type === 'sale' ? 'Edit Sale Transaction'
+                    : type === 'purchase' ? 'Edit Purchase Transaction'
+                    : 'Edit Return Transaction'
+                  : type === 'sale' ? 'New Sale Transaction'
+                    : type === 'purchase' ? 'New Purchase Transaction'
+                    : 'New Return Transaction'}
               </CardTitle>
             </div>
             <Button variant="ghost" size="sm" onClick={onClose} className="text-white hover:bg-white/20">
@@ -239,41 +264,68 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-semibold text-gray-700">
-                      {type === 'sale' ? 'Customer' : 'Vendor'}
+                      {type === 'sale' ? 'Customer' : type === 'purchase' ? 'Vendor' : 'Return Party'}
                     </Label>
-                    <Popover open={type === 'sale' ? openCustomer : openVendor} onOpenChange={type === 'sale' ? setOpenCustomer : setOpenVendor}>
+                    {type === 'return' && (
+                      <div className="flex items-center gap-4 mb-2 mt-1">
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="radio"
+                            checked={returnPartyType === 'customer'}
+                            onChange={() => setReturnPartyType('customer')}
+                          />
+                          Customer
+                        </label>
+                        <label className="flex items-center gap-1">
+                          <input
+                            type="radio"
+                            checked={returnPartyType === 'vendor'}
+                            onChange={() => setReturnPartyType('vendor')}
+                          />
+                          Vendor
+                        </label>
+                      </div>
+                    )}
+                    <Popover
+                      open={type === 'sale' ? openCustomer : type === 'purchase' ? openVendor : returnPartyType === 'customer' ? openCustomer : openVendor}
+                      onOpenChange={type === 'sale' ? setOpenCustomer : type === 'purchase' ? setOpenVendor : returnPartyType === 'customer' ? setOpenCustomer : setOpenVendor}
+                    >
                       <PopoverTrigger asChild>
                         <Button
                           variant="outline"
                           role="combobox"
-                          aria-expanded={type === 'sale' ? openCustomer : openVendor}
+                          aria-expanded={type === 'sale' ? openCustomer : type === 'purchase' ? openVendor : returnPartyType === 'customer' ? openCustomer : openVendor}
                           className="w-full justify-between mt-1 h-10"
                         >
-                          {(type === 'sale' ? customerId : vendorId) ? (
+                          {(type === 'sale' ? customerId : type === 'purchase' ? vendorId : returnPartyType === 'customer' ? customerId : vendorId) ? (
                             <span>
-                              {type === 'sale' 
+                              {type === 'sale'
                                 ? customers.find(c => c.id === customerId)?.name
-                                : vendors.find(v => v.id === vendorId)?.name
+                                : type === 'purchase'
+                                  ? vendors.find(v => v.id === vendorId)?.name
+                                  : returnPartyType === 'customer'
+                                    ? customers.find(c => c.id === customerId)?.name
+                                    : vendors.find(v => v.id === vendorId)?.name
                               }
                             </span>
                           ) : (
-                            <span className="text-gray-500">Select {type === 'sale' ? 'customer' : 'vendor'}...</span>
+                            <span className="text-gray-500">Select {type === 'sale' ? 'customer' : type === 'purchase' ? 'vendor' : returnPartyType === 'customer' ? 'customer' : 'vendor'}...</span>
                           )}
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="w-full p-0 z-[60]">
                         <Command>
-                          <CommandInput placeholder={`Search ${type === 'sale' ? 'customer' : 'vendor'}...`} />
+                          <CommandInput placeholder={`Search ${type === 'sale' ? 'customer' : type === 'purchase' ? 'vendor' : returnPartyType === 'customer' ? 'customer' : 'vendor'}...`} />
                           <CommandList>
-                            <CommandEmpty>No {type === 'sale' ? 'customer' : 'vendor'} found.</CommandEmpty>
+                            <CommandEmpty>No {type === 'sale' ? 'customer' : type === 'purchase' ? 'vendor' : returnPartyType === 'customer' ? 'customer' : 'vendor'} found.</CommandEmpty>
                             <CommandGroup>
-                              {(type === 'sale' ? customers : vendors).map((item) => (
+                              {(type === 'sale' ? customers : type === 'purchase' ? vendors : returnPartyType === 'customer' ? customers : vendors).map((item) => (
                                 <CommandItem
                                   key={item.id}
                                   value={item.name}
                                   onSelect={() => {
-                                    if (type === 'sale') {
+                                    if (type === 'sale' || (type === 'return' && returnPartyType === 'customer')) {
                                       setCustomerId(item.id);
                                       setOpenCustomer(false);
                                     } else {
@@ -285,7 +337,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                                   <Check
                                     className={cn(
                                       "mr-2 h-4 w-4",
-                                      (type === 'sale' ? customerId : vendorId) === item.id ? "opacity-100" : "opacity-0"
+                                      (type === 'sale' || (type === 'return' && returnPartyType === 'customer') ? customerId : vendorId) === item.id ? "opacity-100" : "opacity-0"
                                     )}
                                   />
                                   <div>
@@ -293,7 +345,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                                     <p className="text-sm text-gray-500">{item.phoneNo}</p>
                                     {item.balance > 0 && (
                                       <p className="text-sm text-orange-600">
-                                        Balance: PKR {item.balance.toFixed(2)}
+                                        Balance: {item.balance.toFixed(2)}
                                       </p>
                                     )}
                                   </div>
@@ -306,7 +358,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                     </Popover>
                   </div>
                   <div className="flex items-end">
-                    <Button type="button" onClick={addItem} className={`w-full ${type=='purchase'?' bg-blue-600 hover:bg-blue-700':'bg-green-600 hover:bg-green-700'}`}>
+                    <Button type="button" onClick={addItem} className={`w-full ${type === 'purchase' ? 'bg-blue-600 hover:bg-blue-700' : type === 'sale' ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-500 hover:bg-yellow-600 text-white'}`}>
                       <Plus className="h-4 w-4 mr-2" />
                       Add Item
                     </Button>
@@ -365,11 +417,11 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                 </Button>
                 <Button 
                   type="submit" 
-                  className={`px-8 ${type === 'sale' ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'} shadow-lg`}
+                  className={`px-8 ${type === 'sale' ? 'bg-green-600 hover:bg-green-700' : type === 'purchase' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-yellow-500 hover:bg-yellow-600 text-white'} shadow-lg`}
                 >
                   {isEditMode
-                    ? (type === 'sale' ? 'Update Sale' : 'Update Purchase')
-                    : (type === 'sale' ? 'Complete Sale' : 'Complete Purchase')}
+                    ? (type === 'sale' ? 'Update Sale' : type === 'purchase' ? 'Update Purchase' : 'Update Return')
+                    : (type === 'sale' ? 'Complete Sale' : type === 'purchase' ? 'Complete Purchase' : 'Complete Return')}
                 </Button>
               </div>
             </form>
@@ -480,7 +532,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
         />
       </td>
       <td className="px-6 py-4">
-        <span className="font-semibold text-lg">PKR {item.totalPrice.toFixed(2)}</span>
+        <span className="font-semibold text-lg"> {item.totalPrice.toFixed(2)}</span>
       </td>
       <td className="px-6 py-4">
         {canRemove && (

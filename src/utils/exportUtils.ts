@@ -12,18 +12,125 @@ export class ExportUtils {
     XLSX.writeFile(wb, `${filename}.xlsx`);
   }
 
-  static exportToPDF(data: Record<string, any>[], title: string, subtitle?: string) {
+  static exportToPDF(data: Record<string, any>[], title: string, subtitle?: string, p0?: { previousCashInHand: number; netChange: number; currentCashInHand: number; }) {
     const doc = new jsPDF();
     let y = 14;
+    // Custom layout for Stock Report
+    if (title.toLowerCase().includes('stock report')) {
+      doc.setFontSize(16);
+      doc.setTextColor('#1a237e');
+      doc.text('Company Name', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      y += 9;
+      doc.setFontSize(12);
+      doc.setTextColor('#333');
+      doc.text('Stock Report', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      y += 8;
+      if (subtitle) {
+        doc.setFontSize(9);
+        doc.setTextColor(150);
+        doc.text(subtitle, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+        y += 7;
+      }
+      doc.setTextColor(0);
+      if (data.length > 0) {
+        const columns = Object.keys(data[0]);
+        const rows = data.map(row => columns.map(col => row[col]));
+        autoTable(doc, {
+          head: [columns],
+          body: rows,
+          startY: y + 2,
+          styles: { fontSize: 11, lineColor: 'black', lineWidth: 0.3 },
+          headStyles: { fillColor: "#f2f2f2", textColor: 0, fontStyle: 'bold', lineColor: "black", lineWidth: 0.3 },
+          tableLineColor: "black",
+          tableLineWidth: 0.3,
+        });
+      } else {
+        doc.text('No data available', 14, y + 10);
+      }
+      // Add footer
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const footerY = pageHeight - 15;
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      // Left: Generated date
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, footerY);
+      // Right: Developer info
+      doc.text('Software developed by Uzair Ahmed | 03172146698', pageWidth - 14, footerY, { align: 'right' });
+      // doc.text('03172146687', pageWidth - 14, footerY + 5, { align: 'right' });
+      doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+      return;
+    }
+    // Custom header for General Ledger
+    if (title === 'General Ledger') {
+      const pageWidth = doc.internal.pageSize.getWidth();
+      doc.setFontSize(16);
+      doc.setTextColor('#1a237e');
+      doc.text('Company Name', pageWidth / 2, y, { align: 'center' });
+      y += 10;
+      doc.setFontSize(13);
+      doc.setTextColor(0);
+      doc.text('General Ledger', pageWidth / 2, y, { align: 'center' });
+      y += 8;
+      if (subtitle) {
+        doc.setFontSize(9);
+        doc.setTextColor(150);
+        doc.text(subtitle, pageWidth / 2, y, { align: 'center' });
+        y += 7;
+      }
+      doc.setTextColor(0);
+      if (p0 && typeof p0.currentCashInHand === 'number') {
+        doc.setFontSize(11);
+        doc.text(`Previous Cash in Hand: PKR ${p0.previousCashInHand.toFixed(2)}`, pageWidth - 14, y + 2, { align: 'right' });
+        doc.setTextColor(0);
+      }
+      y += 2;
+      // Table
+      if (data.length > 0) {
+        const columns = Object.keys(data[0]);
+        const rows = data.map(row => columns.map(col => row[col]));
+        autoTable(doc, {
+          head: [columns],
+          body: rows,
+          startY: y + 2,
+          styles: { fontSize: 10, lineColor: 'black', lineWidth: 0.5 },
+          headStyles: { fillColor: "#f2f2f2", textColor: 'black', lineColor: 'black', lineWidth: 0.5 },
+          theme: 'grid',
+          didDrawPage: function (dataTable) {
+            // After table, add current cash in hand only
+            const finalY = dataTable.cursor.y + 8;
+            if (p0 && typeof p0.currentCashInHand === 'number') {
+              doc.setFontSize(11);
+              doc.setTextColor(0);
+              doc.text(`Current Cash in Hand: PKR ${p0.currentCashInHand.toFixed(2)}`, pageWidth - 14, finalY, { align: 'right' });
+              doc.setTextColor(0);
+            }
+          }
+        });
+      } else {
+        doc.text('No data available', 14, y + 10);
+      }
+      // Footer
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const footerY = pageHeight - 15;
+      doc.setFontSize(8);
+      doc.setTextColor(150);
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, footerY);
+      doc.text('Software developed by Uzair Ahmed | 03172146698', pageWidth - 14, footerY, { align: 'right' });
+      doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
+      return;
+    }
+    // Default layout for other reports
     doc.setFontSize(16);
     doc.text(title, 14, y);
     y += 8;
     if (subtitle) {
-      doc.setFontSize(12);
+      doc.setFontSize(9);
       doc.text(subtitle, 14, y);
       y += 6;
     }
-    if (data.length > 0) {
+    // Show cash in hand summary if provided
+       if (data.length > 0) {
       const columns = Object.keys(data[0]);
       const rows = data.map(row => columns.map(col => row[col]));
       autoTable(doc, {
@@ -31,7 +138,7 @@ export class ExportUtils {
         body: rows,
         startY: y + 2,
         styles: { fontSize: 10 },
-        headStyles: { fillColor: [40, 167, 69] },
+        headStyles: { fillColor: "#f2f2f2" },
       });
     } else {
       doc.text('No data available', 14, y + 10);
@@ -78,7 +185,7 @@ export class ExportUtils {
             .items-table td.amount { text-align: right; }
             .items-table tr:nth-child(even) { background: #f8f9fa; }
             .total-row { background: #e3f2fd !important; font-weight: bold; }
-            .footer { font-size:11px;clear: both;display:flex;justify-content:space-between; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; color: #666; }
+            .footer { font-size:8px;clear: both;display:flex;justify-content:space-between; text-align: center; margin-top: 20px; padding-top: 10px; border-top: 1px solid #eee; color: #666; }
             .highlight { color: #007bff; font-weight: bold; }
           </style>
         </head>
@@ -94,16 +201,12 @@ export class ExportUtils {
                 <div class="info-value">${client?.name || 'N/A'}</div>
                 <div class="info-label">${clientType} ID:</div>
                 <div class="info-value">${client?.uniqueId || 'N/A'}</div>
-                <div class="info-label">Phone:</div>
-                <div class="info-value">${client?.phoneNo || 'N/A'}</div>
               </div>
               <div class="invoice-info">
                 <div class="info-label">Invoice Number:</div>
                 <div class="info-value highlight">${transaction.invoiceNumber}</div>
                 <div class="info-label">Date:</div>
                 <div class="info-value">${new Date(transaction.date).toLocaleDateString()}</div>
-                <div class="info-label">Time:</div>
-                <div class="info-value">${new Date(transaction.date).toLocaleTimeString()}</div>
               </div>
             </div>
             <table class="items-table">
@@ -144,10 +247,10 @@ export class ExportUtils {
               </tbody>
             </table>
             <div class="footer">
-            <p style="font-size: 12px;">Generated on: ${new Date().toLocaleString()}</p>
+            <p style="font-size: 8px;">Generated on: ${new Date().toLocaleString()}</p>
             <div>
-              <p>Software developer by Uzair Ahmed</p>
-              <p>03172146698</p>
+              <p>Software developer by Uzair Ahmed | 03172146698</p>
+              
               </div>
             </div>
             
@@ -174,7 +277,6 @@ export class ExportUtils {
         { Field: 'Type', Value: transaction.type === 'sale' ? 'Sale' : transaction.type === 'return' ? 'Return' : 'Purchase' },
         { Field: `${clientType} Name`, Value: client?.name || 'N/A' },
         { Field: `${clientType} ID`, Value: client?.uniqueId || 'N/A' },
-        { Field: 'Phone', Value: client?.phoneNo || 'N/A' },
         { Field: '', Value: '' }, // Empty row
         { Field: 'ITEMS', Value: '' },
         ...transaction.items.map((item, index: number) => ({
@@ -189,5 +291,70 @@ export class ExportUtils {
       
       ExportUtils.exportToExcel(data, `Invoice_${transaction.invoiceNumber}`);
     }
+  }
+
+  static exportOutstandingLedgerPDF(data: Record<string, any>[], options: { title: string, dateRange?: string, companyName?: string, fileName?: string }) {
+    const { title, dateRange, companyName = 'Company Name', fileName = 'Outstanding_Balances' } = options;
+    const doc = new jsPDF();
+    let y = 14;
+    doc.setFontSize(16);
+    doc.setTextColor('#1a237e');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.text('Company Name', pageWidth / 2, y, { align: 'center' });
+    y += 10;
+    doc.setFontSize(12);
+    doc.setTextColor(0);
+    doc.text(title, pageWidth / 2, y, { align: 'center' });
+    y += 8;
+    if (dateRange) {
+      doc.setFontSize(9);
+      doc.setTextColor(150);
+      doc.text(`Date Range: ${dateRange}`, pageWidth / 2, y, { align: 'center'});
+      y += 7;
+    }
+    doc.setTextColor(0);
+    if (data.length > 0) {
+      let columns: string[];
+      let rows: any[][];
+      if (title.toLowerCase().includes('outstanding')) {
+        columns = ['Name', 'Phone No', 'Outstanding Balance'];
+        rows = data.map(row => [row['Name'], row['Phone No'], `${Number(row['Outstanding Balance']).toFixed(2)}`]);
+        // Calculate total
+        const total = data.reduce((sum, row) => sum + Number(row['Outstanding Balance']), 0);
+        rows.push([
+          { content: 'Total Balance', colSpan: 2, styles: { fontStyle: 'bold', halign: 'right' } },
+          { content: `${total.toFixed(2)}`, styles: { fontStyle: 'bold', halign: 'center' } }
+        ]);
+      } else {
+        // Use dynamic columns for other reports (like Expenses)
+        columns = Object.keys(data[0]);
+        rows = data.map(row => columns.map(col => row[col]));
+      }
+      autoTable(doc, {
+        head: [columns],
+        body: rows,
+        startY: y + 2,
+        styles: { fontSize: 9, lineColor: "black", lineWidth: 0.3 },
+        headStyles: { fillColor: '#f2f2f2', textColor: 'black', halign: 'center' },
+        bodyStyles: { halign: 'center' },
+        tableLineColor: 'black',
+        tableLineWidth: 0.5,
+        theme: 'grid',
+        didDrawPage: function (data) {
+          const pageHeight = doc.internal.pageSize.getHeight();
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const leftText = `Generated: ${new Date().toLocaleString()}`;
+          const rightText1 = 'Software developed by Uzair Ahmed | 03172146698';
+          doc.setFontSize(8);
+          doc.setTextColor(150); // Set grey color
+          doc.text(leftText, 14, pageHeight - 10, { align: 'left' });
+          doc.setTextColor(150); // Reset to gray
+          doc.text(rightText1, pageWidth - 14, pageHeight - 10, { align: 'right' });
+        }
+      });
+    } else {
+      doc.text('No data available', pageWidth / 2, y + 10, { align: 'center' });
+    }
+    doc.save(`${fileName}.pdf`);
   }
 }

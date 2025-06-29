@@ -56,6 +56,10 @@ export const CustomerSection = () => {
 
   const [monthlySummaryCustomer, setMonthlySummaryCustomer] = useState<string | null>(null);
 
+  const [showOutstandingDialog, setShowOutstandingDialog] = useState(false);
+  const [outstandingDateTo, setOutstandingDateTo] = useState('');
+  const [outstandingData, setOutstandingData] = useState<any[]>([]);
+
   useEffect(() => {
     fetchCustomers();
     fetchTransactions();
@@ -158,9 +162,9 @@ export const CustomerSection = () => {
     return ledger.map(entry => ({
       Date: entry.date.toLocaleDateString(),
       Description: Array.isArray(entry.description) ? entry.description.join('\n') : entry.description,
-      Debit: entry.debit > 0 ? `PKR ${entry.debit.toFixed(2)}` : '',
-      Credit: entry.credit > 0 ? `PKR ${entry.credit.toFixed(2)}` : '',
-      Balance: `PKR ${entry.balance.toFixed(2)}`,
+      Debit: entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '',
+      Credit: entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '',
+      Balance: `${entry.balance.toFixed(2)}`,
     }));
   };
 
@@ -213,49 +217,97 @@ export const CustomerSection = () => {
     setShowReturnForm(true);
   };
 
+  const getAllOutstandingBalances = (dateTo: string) => {
+    return customers.map(customer => {
+      const customerTransactions = transactions
+        .filter(t => t.customerId === customer.id && (t.type === 'sale' || t.type === 'return'))
+        .filter(t => {
+          if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
+          return true;
+        });
+      const customerPayments = balancePayments
+        .filter(p => p.customerId === customer.id && p.type === 'customer_payment')
+        .filter(p => {
+          if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
+          return true;
+        });
+      let runningBalance = 0;
+      const ledgerEntries = [
+        ...customerTransactions.map(t => ({
+          debit: t.type === 'sale' ? t.totalAmount : 0,
+          credit: t.type === 'return' ? t.totalAmount : 0,
+        })),
+        ...customerPayments.map(p => ({
+          debit: 0,
+          credit: p.amount,
+        })),
+      ];
+      ledgerEntries.forEach(entry => {
+        runningBalance = runningBalance + entry.debit - entry.credit;
+      });
+      return {
+        Name: customer.name,
+        'Phone No': customer.phoneNo,
+        'Outstanding Balance': runningBalance,
+      };
+    }).filter(row => row['Outstanding Balance'] > 0);
+  };
+
+  useEffect(() => {
+    if (showOutstandingDialog) {
+      setOutstandingData(getAllOutstandingBalances(outstandingDateTo));
+    }
+    // eslint-disable-next-line
+  }, [showOutstandingDialog, outstandingDateTo, customers, transactions, balancePayments]);
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Customers</h2>
-        <Dialog open={showForm} onOpenChange={setShowForm}>
-          <DialogTrigger asChild>
-            <Button onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Customer
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <Label htmlFor="name">Customer Name</Label>
-                <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="Enter customer name"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="phoneNo">Phone Number</Label>
-                <Input
-                  id="phoneNo"
-                  value={formData.phoneNo}
-                  onChange={(e) => setFormData({ ...formData, phoneNo: e.target.value })}
-                  placeholder="Enter phone number"
-                  required
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={resetFormData}>Cancel</Button>
-                <Button type="submit">{editingCustomer ? 'Update' : 'Add'} Customer</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-2">
+          <Dialog open={showForm} onOpenChange={setShowForm}>
+            <DialogTrigger asChild>
+              <Button onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Customer
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingCustomer ? 'Edit Customer' : 'Add New Customer'}</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <Label htmlFor="name">Customer Name</Label>
+                  <Input
+                    id="name"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Enter customer name"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="phoneNo">Phone Number</Label>
+                  <Input
+                    id="phoneNo"
+                    value={formData.phoneNo}
+                    onChange={(e) => setFormData({ ...formData, phoneNo: e.target.value })}
+                    placeholder="Enter phone number"
+                    required
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <Button type="button" variant="outline" onClick={resetFormData}>Cancel</Button>
+                  <Button type="submit">{editingCustomer ? 'Update' : 'Add'} Customer</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" onClick={() => setShowOutstandingDialog(true)}>
+            Outstanding Balances
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -297,13 +349,6 @@ export const CustomerSection = () => {
                   }}
                 >
                   Ledger
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setMonthlySummaryCustomer(customer.id)}
-                >
-                  Monthly Summary
                 </Button>
                 <Button size="sm" variant="outline" onClick={() => handleEdit(customer)}>
                   <Edit className="h-3 w-3" />
@@ -360,7 +405,7 @@ export const CustomerSection = () => {
                       <Label htmlFor="paymentNotes">Notes</Label>
                       <Input
                         id="paymentNotes"
-                        placeholder="Payment reason"
+                        placeholder="Payment Description"
                         value={paymentData.notes}
                         onChange={(e) => setPaymentData(prev => ({ ...prev, notes: e.target.value }))}
                         required
@@ -470,11 +515,19 @@ export const CustomerSection = () => {
                         entry.description
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{entry.debit > 0 ? `PKR ${entry.debit.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="text-right">{entry.credit > 0 ? `PKR ${entry.credit.toFixed(2)}` : '-'}</TableCell>
-                    <TableCell className="text-right">PKR {entry.balance.toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="text-right">{entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '-'}</TableCell>
+                    <TableCell className="text-right">{entry.balance.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
+                {selectedCustomer && getCustomerLedger(selectedCustomer).length > 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
+                    <TableCell className="font-bold text-right">
+                      {getCustomerLedger(selectedCustomer)[getCustomerLedger(selectedCustomer).length - 1].balance.toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                )}
                 {selectedCustomer && getCustomerLedger(selectedCustomer).length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center">No transactions or payments in this period.</TableCell>
@@ -485,56 +538,6 @@ export const CustomerSection = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Monthly Sales Summary for Customer */}
-      {selectedCustomer && (
-        <div className="mt-8">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-lg font-bold">Monthly Sales & Payments Summary</h2>
-            <div className="flex gap-2">
-              <PdfExportButton
-                document={
-                  <LedgerPDF
-                    data={exportCustomerMonthlySummaryLedgerPDFData(selectedCustomer) || []}
-                    title={`${customers.find(c => c.id === selectedCustomer)?.name} - Monthly Summary`}
-                    subtitle={`All Months`}
-                    companyName="Company Name"
-                  />
-                }
-                fileName={`${customers.find(c => c.id === selectedCustomer)?.name}_Monthly_Summary.pdf`}
-              />
-              <Button onClick={() => {
-                const data = exportCustomerMonthlySummaryData(selectedCustomer);
-                if (data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === selectedCustomer)?.name}_Monthly_Summary`);
-              }}>
-                Export Excel
-              </Button>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 border-b">Month</th>
-                  <th className="px-4 py-2 border-b">Sales</th>
-                  <th className="px-4 py-2 border-b">Payments</th>
-                  <th className="px-4 py-2 border-b">Net</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getCustomerMonthlySummary(selectedCustomer).map((row) => (
-                  <tr key={row.month}>
-                    <td className="px-4 py-2 border-b">{row.month}</td>
-                    <td className="px-4 py-2 border-b text-green-700 font-semibold">PKR {row.sales.toFixed(2)}</td>
-                    <td className="px-4 py-2 border-b text-blue-700 font-semibold">PKR {row.payments.toFixed(2)}</td>
-                    <td className="px-4 py-2 border-b font-bold {row.net >= 0 ? 'text-green-700' : 'text-red-700'}">PKR {row.net.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {showReturnForm && returnCustomerId && (
         <Dialog open={showReturnForm} onOpenChange={setShowReturnForm}>
@@ -551,63 +554,69 @@ export const CustomerSection = () => {
         </Dialog>
       )}
 
-      <Dialog open={!!monthlySummaryCustomer} onOpenChange={(isOpen) => !isOpen && setMonthlySummaryCustomer(null)}>
+      <Dialog open={showOutstandingDialog} onOpenChange={setShowOutstandingDialog}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>
-              Monthly Sales Transactions for {customers.find(c => c.id === monthlySummaryCustomer)?.name}
-            </DialogTitle>
+            <DialogTitle>Outstanding Customer Balances</DialogTitle>
           </DialogHeader>
-          <div className="flex gap-2 mb-2">
-            <PdfExportButton
-              document={
-                <MonthlySummaryPDF
-                  data={exportCustomerMonthlyTransactionsPDF(monthlySummaryCustomer) || []}
-                  title={`${customers.find(c => c.id === monthlySummaryCustomer)?.name} - Monthly Sales Summary`}
-                  subtitle={`${getCustomerMonthlyTransactionsWithMonthBalance(monthlySummaryCustomer).map(g => g.month).join(', ')}`}
-                  companyName="Company Name"
-                />
-              }
-              fileName={`${customers.find(c => c.id === monthlySummaryCustomer)?.name}_Monthly_Sales_Transactions.pdf`}
-            />
-            <Button onClick={() => {
-              const data = exportCustomerMonthlyTransactionsPDF(monthlySummaryCustomer);
-              if (data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === monthlySummaryCustomer)?.name}_Monthly_Sales_Transactions`);
-            }}>
-              Export Excel
-            </Button>
+          <div className="flex gap-4 mb-4">
+            <div>
+              <Label htmlFor="outstandingDateTo">Till Date</Label>
+              <Input
+                id="outstandingDateTo"
+                type="date"
+                value={outstandingDateTo}
+                onChange={e => setOutstandingDateTo(e.target.value)}
+              />
+            </div>
+            <div className="flex items-end gap-2">
+              <Button
+                onClick={() => ExportUtils.exportToExcel(outstandingData.map(row => ({
+                  'Name': row['Name'],
+                  'Phone No': row['Phone No'],
+                  'Outstanding Balance': row['Outstanding Balance']
+                })), 'Outstanding_Customers')}
+                disabled={outstandingData.length === 0}
+              >
+                Export Excel
+              </Button>
+              <Button
+                onClick={() => ExportUtils.exportOutstandingLedgerPDF(
+                  outstandingData,
+                  {
+                    title: 'Customer Outstanding',
+                    dateRange: outstandingDateTo ? `Till ${outstandingDateTo}` : 'All Time',
+                    companyName: 'Company Name',
+                    fileName: 'Outstanding_Customers_Ledger'
+                  }
+                )}
+                disabled={outstandingData.length === 0}
+              >
+                Export PDF
+              </Button>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200 rounded-lg">
+          <div className="overflow-x-auto max-h-[400px]">
+            <table className="min-w-full text-sm border">
               <thead>
                 <tr>
-                  <th className="px-4 py-2 border-b">Date</th>
-                  <th className="px-4 py-2 border-b">Invoice No</th>
-                  <th className="px-4 py-2 border-b">Description</th>
-                  <th className="px-4 py-2 border-b">Amount</th>
+                  <th className="border px-2 py-1 text-left">Name</th>
+                  <th className="border px-2 py-1 text-left">Phone No</th>
+                  <th className="border px-2 py-1 text-left">Outstanding Balance</th>
                 </tr>
               </thead>
               <tbody>
-                {getCustomerMonthlyTransactionsWithMonthBalance(monthlySummaryCustomer).map(group => (
-                  <React.Fragment key={group.month}>
-                    <tr className="bg-gray-100 font-bold">
-                      <td colSpan={4}
-                        >Monthly Sales for {group.month}</td>
+                {outstandingData.length === 0 ? (
+                  <tr><td colSpan={3} className="text-center py-4">No outstanding balances found.</td></tr>
+                ) : (
+                  outstandingData.map((row, idx) => (
+                    <tr key={idx}>
+                      <td className="border px-2 py-1">{row['Name']}</td>
+                      <td className="border px-2 py-1">{row['Phone No']}</td>
+                      <td className="border px-2 py-1 text-left"> {row['Outstanding Balance'].toFixed(2)}</td>
                     </tr>
-                    {group.transactions.map((t, idx) => (
-                      <tr key={t.id}>
-                        <td className="px-4 py-2 border-b">{t.date ? new Date(t.date).toLocaleDateString() : ''}</td>
-                        <td className="px-4 py-2 border-b">{t.invoiceNumber}</td>
-                        <td className="px-4 py-2 border-b">{t.items.map(item => `${item.productName} x ${item.quantity} @ ${item.price.toFixed(2)}`).join(', ')}</td>
-                        <td className="px-4 py-2 border-b text-green-700 font-semibold">{(t.type === 'sale' ? t.totalAmount : -t.totalAmount).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                    <tr className="font-bold bg-gray-200">
-                      <td colSpan={3} className="text-right">Total Balance:</td>
-                      <td>{group.monthBalance.toFixed(2)}</td>
-                    </tr>
-                  </React.Fragment>
-                ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -616,100 +625,3 @@ export const CustomerSection = () => {
     </div>
   );
 };
-
-function getCustomerMonthlySummary(customerId: string) {
-  // Group sales and payments by month for the selected customer
-  const { transactions, balancePayments } = useInventoryStore.getState();
-  const summary: Record<string, { sales: number; payments: number }> = {};
-  transactions.filter(t => t.customerId === customerId && (t.type === 'sale' || t.type === 'return')).forEach(t => {
-    if (!t.date) return;
-    const d = new Date(t.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { sales: 0, payments: 0 };
-    if (t.type === 'sale') summary[key].sales += t.totalAmount || 0;
-    if (t.type === 'return') summary[key].sales -= t.totalAmount || 0;
-  });
-  balancePayments.filter(p => p.customerId === customerId && p.type === 'customer_payment').forEach(p => {
-    if (!p.date) return;
-    const d = new Date(p.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { sales: 0, payments: 0 };
-    summary[key].payments += p.amount || 0;
-  });
-  return Object.entries(summary)
-    .map(([key, val]) => ({
-      month: new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }),
-      sales: val.sales,
-      payments: val.payments,
-      net: val.sales - val.payments,
-    }))
-    .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
-}
-
-function exportCustomerMonthlySummaryData(customerId: string) {
-  return getCustomerMonthlySummary(customerId).map(row => ({
-    Month: row.month,
-    Sales: `${row.sales.toFixed(2)}`,
-    Payments: `${row.payments.toFixed(2)}`,
-    Net: `${row.net.toFixed(2)}`,
-  }));
-}
-
-function exportCustomerMonthlySummaryLedgerPDFData(customerId: string) {
-  return getCustomerMonthlySummary(customerId).map(row => ({
-    Date: row.month,
-    Description: 'Monthly Summary',
-    Debit: row.sales > 0 ? `PKR ${row.sales.toFixed(2)}` : '',
-    Credit: row.payments > 0 ? `PKR ${row.payments.toFixed(2)}` : '',
-    Balance: ` ${row.net.toFixed(2)}`,
-  }));
-}
-
-function getCustomerMonthlyTransactionsWithMonthBalance(customerId) {
-  const { transactions } = useInventoryStore.getState();
-  const summary = {};
-  transactions.filter(t => t.customerId === customerId && (t.type === 'sale' || t.type === 'return')).forEach(t => {
-    if (!t.date) return;
-    const d = new Date(t.date);
-    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
-    if (!summary[key]) summary[key] = { transactions: [], month: key, monthBalance: 0 };
-    if (t.type === 'sale') {
-      summary[key].transactions.push(t);
-      summary[key].monthBalance += t.totalAmount || 0;
-    } else if (t.type === 'return') {
-      summary[key].transactions.push(t);
-      summary[key].monthBalance -= t.totalAmount || 0;
-    }
-  });
-  return Object.entries(summary).map(([key, val]) => {
-    const v = val as { transactions: any[]; monthBalance: number };
-    return {
-      transactions: v.transactions,
-      monthBalance: v.monthBalance,
-      month: new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' }),
-    };
-  });
-}
-
-function exportCustomerMonthlyTransactionsPDF(customerId) {
-  const grouped = getCustomerMonthlyTransactionsWithMonthBalance(customerId);
-  const rows = grouped.flatMap(g => [
-    // Month header row
-    
-    // Transactions
-    ...g.transactions.map(t => ({
-      Date: t.date ? new Date(t.date).toLocaleDateString() : '',
-      'Invoice No': t.invoiceNumber,
-      Description: t.items.map(item => `${item.productName} x ${item.quantity} @ ${item.price.toFixed(2)}`).join(', '),
-      Amount: `${(t.type === 'sale' ? t.totalAmount : -t.totalAmount).toFixed(2)}`,
-    })),
-    // Total row
-    {
-      Date: '',
-      'Invoice No': '',
-      Description: 'Total Balance',
-      Amount: `${g.monthBalance.toFixed(2)}`,
-    }
-  ]);
-  return rows;
-}

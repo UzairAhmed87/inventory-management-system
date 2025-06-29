@@ -50,11 +50,14 @@ export const TransactionHistory = () => {
     .filter(t => {
       if (!t || !t.items) return false;
       
-      const matchesSearch = t.items.some(item => 
-        item && item.productName && item.productName.toLowerCase().includes(searchTerm.toLowerCase())
-      ) ||
-        (t.customerId && customers.find(c => c.id === t.customerId)?.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-        (t.vendorId && vendors.find(v => v.id === t.vendorId)?.name.toLowerCase().includes(searchTerm.toLowerCase()));
+      const lowerSearch = searchTerm.toLowerCase();
+      const matchesSearch =
+        (t.invoiceNumber && t.invoiceNumber.toLowerCase().includes(lowerSearch)) ||
+        t.items.some(item => 
+          item && item.productName && item.productName.toLowerCase().includes(lowerSearch)
+        ) ||
+        (t.customerId && customers.find(c => c.id === t.customerId)?.name.toLowerCase().includes(lowerSearch)) ||
+        (t.vendorId && vendors.find(v => v.id === t.vendorId)?.name.toLowerCase().includes(lowerSearch));
       
       const matchesType = filterType === 'all' || t.type === filterType;
       
@@ -133,6 +136,8 @@ export const TransactionHistory = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-3xl font-bold text-gray-900">Transaction History</h2>
+        <div className="flex gap-2">
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -325,19 +330,6 @@ export const TransactionHistory = () => {
                         >
                           Edit
                         </Button>
-                        {(transaction.type === 'sale' || transaction.type === 'purchase') && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setReturnTransaction(transaction);
-                              setShowReturnForm(true);
-                            }}
-                            className="ml-2 bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
-                          >
-                            Return
-                          </Button>
-                        )}
                       </td>
                     </tr>
                   );
@@ -365,15 +357,13 @@ export const TransactionHistory = () => {
           isEditMode={true}
         />
       )}
-      {showReturnForm && returnTransaction && (
+      {showReturnForm && (
         <TransactionForm
           type="return"
           onClose={() => {
             setShowReturnForm(false);
             setReturnTransaction(null);
           }}
-          customerId={returnTransaction.customerId}
-          originalTransaction={returnTransaction}
         />
       )}
     </div>
