@@ -2,7 +2,6 @@ import * as XLSX from "xlsx";
 import { Customer, Vendor, Transaction } from "@/store/inventoryStore";
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { log } from "console";
 
 export class ExportUtils {
   static exportToExcel(data: Record<string, any>[], filename: string) {
@@ -147,19 +146,13 @@ export class ExportUtils {
   }
 
   static exportTransactionBill(transaction: Transaction, customer: Customer | null, vendor: Vendor | null, format: 'excel' | 'pdf') {
-    console.log("Vendor",vendor);
-    
     let client: Customer | Vendor;
     let clientType = '';
-    console.log("Client:",client);
-    
     if (transaction.type === 'sale' || (transaction.type === 'return' && transaction.customerId)) {
       client = customer;
-      console.log("Client:",client);
       clientType = 'Customer';
     } else if (transaction.type === 'purchase' || (transaction.type === 'return' && transaction.vendorId)) {
       client = vendor;
-      console.log("Client:",client);
       clientType = 'Vendor';
     }
     if (format === 'pdf') {

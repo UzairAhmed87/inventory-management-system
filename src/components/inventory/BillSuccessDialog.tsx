@@ -26,7 +26,7 @@ export const BillSuccessDialog: React.FC<BillSuccessDialogProps> = ({
   // Fallback: If customer/vendor is missing, look up by ID
   const resolvedCustomer = customer || (customerId ? customers.find((c: any) => c.id === customerId) : null);
   const resolvedVendor = vendor || (vendorId ? vendors.find((v: any) => v.id === vendorId) : null);
-console.log(transaction);
+
   // For display and bill: decide which to use for returns
   let displayName = '';
   let displayLabel = '';
@@ -42,9 +42,6 @@ console.log(transaction);
     // Always look up the latest customer/vendor from the store at the time of download
     const latestCustomer = transaction.customerId ? customers.find((c: any) => c.id === transaction.customerId) : null;
     const latestVendor = transaction.vendorId ? vendors.find((v: any) => v.id === transaction.vendorId) : null;
-    console.log("Transaction vendorId:", transaction.vendorId);
-    console.log("Vendors in store:", vendors);
-    console.log("Resolved latestVendor:", latestVendor);
     if (transaction.vendorId && !latestVendor) {
       alert('Vendor not found. Please check vendor data or refresh the page.');
       return;

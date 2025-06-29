@@ -40,7 +40,6 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
     const receivedByVal = receivedBy || '-';
     const dateVal = payment ? new Date(payment.date).toLocaleDateString() : '-';
     if (!isOpen || !payment) return null;
-console.log('Payment object:', payment); // Debug log
     // Previous/Current/New balance logic
     let previousBalance = '-';
     let newBalance = '-';
