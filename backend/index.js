@@ -34,7 +34,7 @@ const app = express();
 //   credentials: true
 // }));
 app.use(cors({
-    origin: 'https://trackistory.vercel.app/',
+    origin: 'https://trackistory.vercel.app',
     credentials: true 
   }));
 app.use(express.json());
