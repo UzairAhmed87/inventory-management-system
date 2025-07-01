@@ -11,7 +11,7 @@ const customersRouter = require('./routes/customers');
 const vendorsRouter = require('./routes/vendors');
 
 const app = express();
-const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
+// const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
 // const allowedOrigins = [
 //   'http://localhost:8080', // React default
 //   'http://localhost:5173', // Vite default
@@ -34,7 +34,7 @@ const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
 //   credentials: true
 // }));
 app.use(cors({
-    origin: frontendUrl,
+    origin: 'https://trackistory.vercel.app/',
     credentials: true 
   }));
 app.use(express.json());
