@@ -7,7 +7,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { X, ShoppingCart, Package, Check, ChevronsUpDown } from 'lucide-react';
 import { useInventoryStore, Product, Transaction } from '@/store/inventoryStore';
-import { toast } from '@/hooks/use-toast';
+import { toast } from '../ui/use-toast';
 import { cn } from '@/lib/utils';
 import { ExportUtils } from '@/utils/exportUtils';
 
@@ -36,6 +36,9 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose,
   const [openProduct, setOpenProduct] = useState(false);
   const [openCustomer, setOpenCustomer] = useState(false);
   const [openVendor, setOpenVendor] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(false);
+
+  const setGlobalLoader = useInventoryStore(state => state.setGlobalLoader);
 
   useEffect(() => {
     fetchProducts();
@@ -97,116 +100,150 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose,
     }
   }, [type, originalTransaction, transactions]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (type === 'return' && originalTransaction) {
-      // Special return logic for originalTransaction
-      const customerId = originalTransaction.customerId || undefined;
-      const vendorId = originalTransaction.vendorId || undefined;
-      let hasReturn = false;
-      for (const item of returnItems) {
-        const origQty = item.maxReturnable;
-        const retQty = parseInt(item.returnQty || '0');
-        if (retQty > 0) hasReturn = true;
-        if (retQty < 0 || retQty > origQty) {
+    setGlobalLoader(true);
+    setTimeout(() => {
+      setPendingSubmit(true);
+    }, 0);
+  };
+
+  useEffect(() => {
+    if (!pendingSubmit) return;
+    // All transaction logic moved here
+    const runTransaction = async () => {
+      if (type === 'return' && originalTransaction) {
+        const customerId = originalTransaction.customerId || undefined;
+        const vendorId = originalTransaction.vendorId || undefined;
+        let hasReturn = false;
+        for (const item of returnItems) {
+          const origQty = item.maxReturnable;
+          const retQty = parseInt(item.returnQty || '0');
+          if (retQty > 0) hasReturn = true;
+          if (retQty < 0 || retQty > origQty) {
+            toast({
+              title: 'Invalid Return Quantity',
+              description: `You can only return up to ${origQty} units for ${item.productName}`,
+              variant: 'destructive',
+            });
+            setGlobalLoader(false);
+            setPendingSubmit(false);
+            return;
+          }
+        }
+        if (!hasReturn) {
           toast({
-            title: 'Invalid Return Quantity',
-            description: `You can only return up to ${origQty} units for ${item.productName}`,
+            title: 'No Items Selected',
+            description: 'Please enter a return quantity for at least one item.',
             variant: 'destructive',
           });
+          setGlobalLoader(false);
+          setPendingSubmit(false);
+          return;
+        }
+        const itemsToReturn = returnItems.filter(item => parseInt(item.returnQty) > 0).map(item => ({
+          productId: item.productId,
+          productName: item.productName,
+          quantity: parseInt(item.returnQty),
+          price: item.price,
+          totalPrice: parseInt(item.returnQty) * item.price,
+        }));
+        try {
+          const newTx = await addTransaction({
+            type,
+            customer_name: customerId ? customers.find(c => c.id === customerId)?.name : undefined,
+            vendor_name: vendorId ? vendors.find(v => v.id === vendorId)?.name : undefined,
+            items: itemsToReturn,
+            totalAmount: itemsToReturn.reduce((sum, i) => sum + i.totalPrice, 0),
+            date: new Date().toISOString(),
+            originalTransactionId: originalTransaction.id,
+          });
+          toast({
+            title: 'Success',
+            description: 'Return transaction added successfully',
+          });
+          setReturnTransactionData(newTx);
+          setShowReturnBill(true);
+        } catch (err: any) {
+          toast({ title: 'Error', description: err.message || 'Transaction failed', variant: 'destructive' });
+        }
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      if (!formData.productId || !formData.quantity || !formData.price) {
+        toast({
+          title: "Error",
+          description: "Please fill in all required fields",
+          variant: "destructive",
+        });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      if ((type === 'sale') && !formData.customerId) {
+        toast({
+          title: "Error",
+          description: `Please select a customer for sales`,
+          variant: "destructive",
+        });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      if (type === 'purchase' && !formData.vendorId) {
+        toast({
+          title: "Error",
+          description: "Please select a vendor for purchases",
+          variant: "destructive",
+        });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      const quantity = parseInt(formData.quantity);
+      const price = parseFloat(formData.price);
+      if (type === 'sale' && selectedProduct) {
+        if (selectedProduct.quantity < quantity) {
+          toast({
+            title: "Insufficient Stock",
+            description: `Only ${selectedProduct.quantity} units available in stock`,
+            variant: "destructive",
+          });
+          setGlobalLoader(false);
+          setPendingSubmit(false);
           return;
         }
       }
-      if (!hasReturn) {
-        toast({
-          title: 'No Items Selected',
-          description: 'Please enter a return quantity for at least one item.',
-          variant: 'destructive',
+      try {
+        const newTx = await addTransaction({
+          type,
+          customer_name: type === 'sale' ? formData.customerId : undefined,
+          vendor_name: type === 'purchase' ? formData.vendorId : undefined,
+          items: [{
+            productName: selectedProduct?.name || '',
+            quantity,
+            price,
+            totalPrice,
+          }],
+          totalAmount: totalPrice,
+          date: new Date().toISOString(),
         });
-        return;
-      }
-      const itemsToReturn = returnItems.filter(item => parseInt(item.returnQty) > 0).map(item => ({
-        productId: item.productId,
-        productName: item.productName,
-        quantity: parseInt(item.returnQty),
-        price: item.price,
-        totalPrice: parseInt(item.returnQty) * item.price,
-      }));
-      const newTx = await addTransaction({
-        type,
-        customerId,
-        vendorId,
-        items: itemsToReturn,
-        totalAmount: itemsToReturn.reduce((sum, i) => sum + i.totalPrice, 0),
-        date: new Date().toISOString(),
-        originalTransactionId: originalTransaction.id,
-      });
-      toast({
-        title: 'Success',
-        description: 'Return transaction added successfully',
-      });
-      setReturnTransactionData(newTx);
-      setShowReturnBill(true);
-      return;
-    }
-
-    if (!formData.productId || !formData.quantity || !formData.price) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields",
-        variant: "destructive",
-      });
-      return;
-    }
-    if ((type === 'sale') && !formData.customerId) {
-      toast({
-        title: "Error",
-        description: `Please select a customer for sales`,
-        variant: "destructive",
-      });
-      return;
-    }
-    if (type === 'purchase' && !formData.vendorId) {
-      toast({
-        title: "Error",
-        description: "Please select a vendor for purchases",
-        variant: "destructive",
-      });
-      return;
-    }
-    const quantity = parseInt(formData.quantity);
-    const price = parseFloat(formData.price);
-    if (type === 'sale' && selectedProduct) {
-      if (selectedProduct.quantity < quantity) {
         toast({
-          title: "Insufficient Stock",
-          description: `Only ${selectedProduct.quantity} units available in stock`,
-          variant: "destructive",
+          title: 'Success',
+          description: `${type.charAt(0).toUpperCase() + type.slice(1)} transaction added successfully`,
         });
-        return;
+        setReturnTransactionData(newTx);
+        setShowReturnBill(true);
+      } catch (err: any) {
+        toast({ title: 'Error', description: err.message || 'Transaction failed', variant: 'destructive' });
       }
-    }
-    const newTx = await addTransaction({
-      type,
-      customerId: type === 'sale' ? formData.customerId : undefined,
-      vendorId: type === 'purchase' ? formData.vendorId : undefined,
-      items: [{
-        productId: formData.productId,
-        productName: selectedProduct?.name || '',
-        quantity,
-        price,
-        totalPrice,
-      }],
-      totalAmount: totalPrice,
-      date: new Date().toISOString(),
-    });
-    toast({
-      title: "Success",
-      description: `${type === 'sale' ? 'Sale' : 'Purchase'} transaction added successfully`,
-    });
-    onClose();
-  };
+      setGlobalLoader(false);
+      setPendingSubmit(false);
+    };
+    runTransaction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSubmit]);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -475,6 +512,7 @@ export const TransactionForm: React.FC<TransactionFormProps> = ({ type, onClose,
               <Button 
                 type="submit" 
                 className={type === 'sale' ? 'bg-green-600 hover:bg-green-700' : type === 'return' ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-blue-600 hover:bg-blue-700'}
+                disabled={pendingSubmit}
               >
                 {type === 'sale' ? 'Complete Sale' : type === 'return' ? 'Complete Return' : 'Complete Purchase'}
               </Button>

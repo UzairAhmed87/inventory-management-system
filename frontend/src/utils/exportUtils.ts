@@ -4,21 +4,21 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export class ExportUtils {
-  static exportToExcel(data: Record<string, any>[], filename: string) {
+  static exportToExcel(data: Record<string, any>[], filename: string, companyName: string = 'Company Name') {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
     XLSX.writeFile(wb, `${filename}.xlsx`);
   }
 
-  static exportToPDF(data: Record<string, any>[], title: string, subtitle?: string, p0?: { previousCashInHand: number; netChange: number; currentCashInHand: number; }) {
+  static exportToPDF(data: Record<string, any>[], title: string, subtitle?: string, p0?: { previousCashInHand: number; netChange: number; currentCashInHand: number; }, companyName: string = 'Company Name') {
     const doc = new jsPDF();
     let y = 14;
     // Custom layout for Stock Report
     if (title.toLowerCase().includes('stock report')) {
       doc.setFontSize(16);
       doc.setTextColor('#1a237e');
-      doc.text('Company Name', doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
+      doc.text(companyName, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
       y += 9;
       doc.setFontSize(12);
       doc.setTextColor('#333');
@@ -65,7 +65,7 @@ export class ExportUtils {
       const pageWidth = doc.internal.pageSize.getWidth();
       doc.setFontSize(16);
       doc.setTextColor('#1a237e');
-      doc.text('Company Name', pageWidth / 2, y, { align: 'center' });
+      doc.text(companyName, pageWidth / 2, y, { align: 'center' });
       y += 10;
       doc.setFontSize(13);
       doc.setTextColor(0);
@@ -145,14 +145,14 @@ export class ExportUtils {
     doc.save(`${title.replace(/\s+/g, '_')}.pdf`);
   }
 
-  static exportTransactionBill(transaction: Transaction, customer: Customer | null, vendor: Vendor | null, format: 'excel' | 'pdf') {
-    let client: Customer | Vendor;
+  static exportTransactionBill(transaction: Transaction, customer: Customer | null, vendor: Vendor | null, format: 'excel' | 'pdf', companyName: string = 'Company Name') {
+    let client: Customer | Vendor | null = null;
     let clientType = '';
-    if (transaction.type === 'sale' || (transaction.type === 'return' && transaction.customerId)) {
-      client = customer;
+    if (transaction.type === 'sale' || (transaction.type === 'return' && transaction.customer_name)) {
+      client = customer || (transaction.customer_name ? { id: '', uniqueId: '', name: transaction.customer_name, phoneNo: '', balance: 0, createdAt: null } : null);
       clientType = 'Customer';
-    } else if (transaction.type === 'purchase' || (transaction.type === 'return' && transaction.vendorId)) {
-      client = vendor;
+    } else if (transaction.type === 'purchase' || (transaction.type === 'return' && transaction.vendor_name)) {
+      client = vendor || (transaction.vendor_name ? { id: '', uniqueId: '', name: transaction.vendor_name, phoneNo: '', balance: 0, createdAt: null } : null);
       clientType = 'Vendor';
     }
     if (format === 'pdf') {
@@ -185,21 +185,19 @@ export class ExportUtils {
         <body>
           <div class="invoice-container">
             <div class="header">
-              <div class="company-name">Company Name</div>
+              <div class="company-name">${companyName}</div>
               <div class="invoice-title">${transaction.type === 'sale' ? 'SALES INVOICE' : transaction.type === 'return' ? 'RETURN INVOICE' : 'PURCHASE INVOICE'}</div>
             </div>
             <div class="invoice-meta">
               <div class="client-info">
                 <div class="info-label">${clientType}:</div>
                 <div class="info-value">${client?.name || 'N/A'}</div>
-                <div class="info-label">${clientType} ID:</div>
-                <div class="info-value">${client?.uniqueId || 'N/A'}</div>
+                <div class="info-label">Date:</div>
+                <div class="info-value">${new Date(transaction.date).toLocaleDateString()}</div>
               </div>
               <div class="invoice-info">
                 <div class="info-label">Invoice Number:</div>
                 <div class="info-value highlight">${transaction.invoiceNumber}</div>
-                <div class="info-label">Date:</div>
-                <div class="info-value">${new Date(transaction.date).toLocaleDateString()}</div>
               </div>
             </div>
             <table class="items-table">
@@ -218,24 +216,24 @@ export class ExportUtils {
                     <td>${idx + 1}</td>
                     <td>${item.productName}</td>
                     <td class="amount">${item.quantity}</td>
-                    <td class="amount"> ${(item.price || 0).toFixed(2)}</td>
-                    <td class="amount"> ${(item.totalPrice || 0).toFixed(2)}</td>
+                    <td class="amount"> ${Number(item.price || 0).toFixed(2)}</td>
+                    <td class="amount"> ${Number(item.totalPrice || 0).toFixed(2)}</td>
                   </tr>
                 `).join('')}
                 <tr>
                   <td colspan="3" style="border: none;"></td>
                   <td class="summary-label">Previous Balance:</td>
-                  <td class="amount"> ${(transaction.previousBalance || 0).toFixed(2)}</td>
+                  <td class="amount"> ${Number(transaction.previousBalance || 0).toFixed(2)}</td>
                 </tr>
                 <tr>
                   <td colspan="3" style="border: none;"></td>
                   <td class="summary-label">Current Bill:</td>
-                  <td class="amount"> ${(transaction.totalAmount || 0).toFixed(2)}</td>
+                  <td class="amount"> ${Number(transaction.totalAmount || 0).toFixed(2)}</td>
                 </tr>
                 <tr class="total-row">
                   <td colspan="3" style="border: none;"></td>
                   <td class="summary-label">Total Balance:</td>
-                  <td class="amount highlight"> ${(transaction.newBalance || 0).toFixed(2)}</td>
+                  <td class="amount highlight"> ${Number(transaction.newBalance || 0).toFixed(2)}</td>
                 </tr>
               </tbody>
             </table>
@@ -269,17 +267,16 @@ export class ExportUtils {
         { Field: 'Date', Value: new Date(transaction.date).toLocaleDateString() },
         { Field: 'Type', Value: transaction.type === 'sale' ? 'Sale' : transaction.type === 'return' ? 'Return' : 'Purchase' },
         { Field: `${clientType} Name`, Value: client?.name || 'N/A' },
-        { Field: `${clientType} ID`, Value: client?.uniqueId || 'N/A' },
         { Field: '', Value: '' }, // Empty row
         { Field: 'ITEMS', Value: '' },
         ...transaction.items.map((item, index: number) => ({
           Field: `Item ${index + 1}`,
-          Value: `${item.productName} - Qty: ${item.quantity} - Price: ${(item.price || 0).toFixed(2)} - Total: PKR ${(item.totalPrice || 0).toFixed(2)}`
+          Value: `${item.productName} - Qty: ${item.quantity} - Price: ${Number(item.price || 0).toFixed(2)} - Total: PKR ${Number(item.totalPrice || 0).toFixed(2)}`
         })),
         { Field: '', Value: '' }, // Empty row
-        { Field: 'Previous Balance', Value: `${(transaction.previousBalance || 0).toFixed(2)}` },
-        { Field: 'Current Amount', Value: ` ${(transaction.totalAmount || 0).toFixed(2)}` },
-        { Field: 'New Balance', Value: `${(transaction.newBalance || 0).toFixed(2)}` },
+        { Field: 'Previous Balance', Value: `${Number(transaction.previousBalance || 0).toFixed(2)}` },
+        { Field: 'Current Amount', Value: ` ${Number(transaction.totalAmount || 0).toFixed(2)}` },
+        { Field: 'New Balance', Value: `${Number(transaction.newBalance || 0).toFixed(2)}` },
       ];
       
       ExportUtils.exportToExcel(data, `Invoice_${transaction.invoiceNumber}`);
@@ -292,17 +289,16 @@ export class ExportUtils {
     let y = 14;
     doc.setFontSize(16);
     doc.setTextColor('#1a237e');
-    const pageWidth = doc.internal.pageSize.getWidth();
-    doc.text('Company Name', pageWidth / 2, y, { align: 'center' });
+    doc.text(companyName, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
     y += 10;
     doc.setFontSize(12);
     doc.setTextColor(0);
-    doc.text(title, pageWidth / 2, y, { align: 'center' });
+    doc.text(title, doc.internal.pageSize.getWidth() / 2, y, { align: 'center' });
     y += 8;
     if (dateRange) {
       doc.setFontSize(9);
       doc.setTextColor(150);
-      doc.text(`Date Range: ${dateRange}`, pageWidth / 2, y, { align: 'center'});
+      doc.text(`Date Range: ${dateRange}`, doc.internal.pageSize.getWidth() / 2, y, { align: 'center'});
       y += 7;
     }
     doc.setTextColor(0);
@@ -346,7 +342,7 @@ export class ExportUtils {
         }
       });
     } else {
-      doc.text('No data available', pageWidth / 2, y + 10, { align: 'center' });
+      doc.text('No data available', doc.internal.pageSize.getWidth() / 2, y + 10, { align: 'center' });
     }
     doc.save(`${fileName}.pdf`);
   }

@@ -1,14 +1,14 @@
-
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Lock, User, AlertCircle } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
+import { toast } from '../ui/use-toast';
+import { login as apiLogin } from '@/services/api';
 
 interface LoginFormProps {
-  onLogin: (userId: string, password: string) => boolean;
+  onLogin: (token: string, login_id: string, companyName: string) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
@@ -30,33 +30,26 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
       return;
     }
 
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    const success = onLogin(formData.userId, formData.password);
-    
-    if (!success) {
-      setError('Invalid credentials. Please check your User ID and password.');
+    try {
+      const { token, company_name } = await apiLogin(formData.userId, formData.password);
+      onLogin(token, formData.userId, company_name);
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
       toast({
         title: "Login Failed",
-        description: "Invalid credentials provided",
+        description: err.message || "Invalid credentials provided",
         variant: "destructive",
       });
     }
-
     setIsLoading(false);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Inventory Management System</h1>
-          <p className="text-gray-600">Sign in to access your dashboard</p>
-        </div>
-
         <Card className="shadow-lg border-0">
           <CardHeader className="space-y-1 text-center pb-4">
+            <img src="/bigLogo.svg" alt="UA Trackistory Logo" className="mx-auto h-20 w-auto mb-4" />
             <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
               <Lock className="h-6 w-6 text-blue-600" />
             </div>

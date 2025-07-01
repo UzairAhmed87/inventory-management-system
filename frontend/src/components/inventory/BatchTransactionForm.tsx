@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,229 +6,203 @@ import { Label } from '@/components/ui/label';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { X, ShoppingCart, Package, Check, ChevronsUpDown, Plus, Trash } from 'lucide-react';
-import { useInventoryStore, Transaction, Product } from '@/store/inventoryStore';
-import { toast } from '@/hooks/use-toast';
+import { useInventoryStore, Product, Customer, Vendor, Transaction } from '@/store/inventoryStore';
+import { toast } from '../ui/use-toast';
 import { cn } from '@/lib/utils';
 import { BillSuccessDialog } from './BillSuccessDialog';
-import { CompletedBatchTransaction } from '@/types';
+import type { CompletedBatchTransaction } from '@/types';
 
-interface BatchTransactionFormProps {
-  type: 'sale' | 'purchase' | 'return';
-  onClose: () => void;
-  transaction?: Transaction;
-  isEditMode?: boolean;
-}
-
-interface TransactionItem {
-  id: string;
-  productId: string;
+// Local type for transaction items (matches Transaction.items[])
+type TransactionItem = {
+  id: string; // local unique id for UI
   productName: string;
   quantity: number;
   price: number;
   totalPrice: number;
+};
+
+interface BatchTransactionFormProps {
+  type: 'sale' | 'purchase' | 'return';
+  onClose: () => void;
+  transaction?: Transaction; // for edit mode
 }
 
-export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type, onClose, transaction, isEditMode }) => {
-  const { products, customers, vendors, addTransaction, updateTransaction, fetchProducts, fetchCustomers, fetchVendors } = useInventoryStore();
-  const [customerId, setCustomerId] = useState('');
-  const [vendorId, setVendorId] = useState('');
+export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type, onClose, transaction }) => {
+  const {
+    products,
+    customers,
+    vendors,
+    addTransaction,
+    updateTransaction,
+    fetchProducts,
+    fetchCustomers,
+    fetchVendors,
+    setGlobalLoader,
+  } = useInventoryStore();
+
+  const isEditMode = !!transaction;
   const [items, setItems] = useState<TransactionItem[]>([]);
+  const [customerId, setCustomerId] = useState<string>('');
+  const [vendorId, setVendorId] = useState<string>('');
   const [openCustomer, setOpenCustomer] = useState(false);
   const [openVendor, setOpenVendor] = useState(false);
+  const [returnPartyType, setReturnPartyType] = useState<'customer' | 'vendor'>('customer');
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<CompletedBatchTransaction | null>(null);
-  const [returnPartyType, setReturnPartyType] = useState<'customer' | 'vendor'>('customer');
+  const [pendingSubmit, setPendingSubmit] = useState(false);
 
-  const addItem = useCallback(() => {
-    setItems(prevItems => {
-      const hasIncompleteItems = prevItems.some(item => 
-        !item.productId || item.quantity <= 0 || item.price <= 0
-      );
-      
-      if (hasIncompleteItems && prevItems.length > 0) {
-        toast({
-          title: "Complete Current Items",
-          description: "Please fill in all details for existing items before adding new ones",
-          variant: "destructive",
-        });
-        return prevItems;
-      }
-
-      const newItem: TransactionItem = {
+  // Add a new empty item row
+  const addItem = () => {
+    setItems(prev => [
+      ...prev,
+      {
         id: crypto.randomUUID(),
-        productId: '',
         productName: '',
         quantity: 1,
         price: 0,
         totalPrice: 0,
-      };
-      return [...prevItems, newItem];
-    });
-  }, []);
+      },
+    ]);
+  };
 
+  // Remove an item row
   const removeItem = (id: string) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems(prev => prev.filter(item => item.id !== id));
   };
 
+  // Update an item field
   const updateItem = (id: string, field: keyof TransactionItem, value: string | number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const updatedItem = { ...item };
-        
-        if (field === 'productId') {
-          const product = products.find(p => p.id === value);
-          updatedItem.productId = value as string;
-          updatedItem.productName = product?.name || '';
-        } else if (field === 'quantity') {
-          updatedItem.quantity = typeof value === 'string' ? Number(value) : value;
-        } else if (field === 'price') {
-          updatedItem.price = typeof value === 'string' ? Number(value) : value;
-        }
-        
-        // Recalculate total price when quantity or price changes
-        if (field === 'quantity' || field === 'price') {
-          updatedItem.totalPrice = updatedItem.quantity * updatedItem.price;
-        }
-        
-        return updatedItem;
-      }
-      return item;
-    }));
-  };
-
-  const getTotalAmount = () => {
-    return items.reduce((sum, item) => sum + item.totalPrice, 0);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Filter out empty/incomplete items
-    const validItems = items.filter(item => 
-      item.productId && item.quantity > 0 && item.price > 0
+    setItems(prev =>
+      prev.map(item =>
+        item.id === id
+          ? {
+              ...item,
+              [field]: value,
+              totalPrice:
+                field === 'quantity' || field === 'price'
+                  ? (field === 'quantity'
+                      ? Number(value)
+                      : item.quantity) * (field === 'price' ? Number(value) : item.price)
+                  : item.quantity * item.price,
+            }
+          : item
+      )
     );
+  };
 
-    if (validItems.length === 0) {
-      toast({
-        title: "Error",
-        description: "Please add at least one valid item",
-        variant: "destructive",
-      });
-      return;
-    }
+  // Calculate total amount
+  const getTotalAmount = () => items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
 
-    if (type === 'sale' && !customerId) {
-      toast({
-        title: "Error",
-        description: "Please select a customer for sales",
-        variant: "destructive",
-      });
-      return;
-    }
+  // Handle form submit
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setGlobalLoader(true);
+    setTimeout(() => {
+      setPendingSubmit(true);
+    }, 0);
+  };
 
-    if (type === 'purchase' && !vendorId) {
-      toast({
-        title: "Error",
-        description: "Please select a vendor for purchases",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (type === 'return' && returnPartyType === 'customer' && !customerId) {
-      toast({
-        title: "Error",
-        description: "Please select a customer for return",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (type === 'return' && returnPartyType === 'vendor' && !vendorId) {
-      toast({
-        title: "Error",
-        description: "Please select a vendor for return",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check stock for sales
-    if (type === 'sale') {
-      for (const item of validItems) {
-        const product = products.find(p => p.id === item.productId);
-        let availableStock = product ? product.quantity : 0;
-        if (isEditMode && transaction) {
-          // Find the original quantity for this product in the transaction
-          const originalItem = transaction.items.find(i => i.productId === item.productId);
-          if (originalItem) {
-            availableStock += originalItem.quantity;
-          }
-        }
-        if (product && item.quantity > availableStock) {
-          toast({
-            title: "Insufficient Stock",
-            description: `Only ${availableStock} units available for ${product.name}`,
-            variant: "destructive",
-          });
+  useEffect(() => {
+    if (!pendingSubmit) return;
+    const runTransaction = async () => {
+      if (items.length === 0 || items.some(item => !item.productName || !item.quantity || !item.price)) {
+        toast({ title: 'Error', description: 'Please fill all item fields', variant: 'destructive' });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      if ((type === 'sale' || (type === 'return' && returnPartyType === 'customer')) && !customerId) {
+        toast({ title: 'Error', description: 'Please select a customer', variant: 'destructive' });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      if ((type === 'purchase' || (type === 'return' && returnPartyType === 'vendor')) && !vendorId) {
+        toast({ title: 'Error', description: 'Please select a vendor', variant: 'destructive' });
+        setGlobalLoader(false);
+        setPendingSubmit(false);
+        return;
+      }
+      const transactionData: Omit<Transaction, 'id' | 'invoiceNumber' | 'previousBalance' | 'newBalance'> = {
+        type,
+        customer_name: (type === 'sale' || (type === 'return' && returnPartyType === 'customer')) ? customers.find(c => c.id === customerId)?.name : undefined,
+        vendor_name: (type === 'purchase' || (type === 'return' && returnPartyType === 'vendor')) ? vendors.find(v => v.id === vendorId)?.name : undefined,
+        items: items.map(item => ({
+          productName: item.productName,
+          quantity: Number(item.quantity),
+          price: Number(item.price),
+          totalPrice: Number(item.totalPrice),
+        })),
+        totalAmount: Number(getTotalAmount()),
+        date: new Date().toISOString(),
+        originalTransactionId: isEditMode && transaction?.originalTransactionId ? transaction.originalTransactionId : undefined,
+      };
+      if (isEditMode && transaction) {
+        try {
+          await updateTransaction(transaction.id, transactionData);
+          toast({ title: 'Success', description: 'Transaction updated successfully' });
+          setGlobalLoader(false);
+          setPendingSubmit(false);
+          onClose();
+          return;
+        } catch (err: any) {
+          toast({ title: 'Error', description: err.message || 'Transaction failed', variant: 'destructive' });
+          setGlobalLoader(false);
+          setPendingSubmit(false);
           return;
         }
+      } else {
+        try {
+          const newTransaction = await addTransaction(transactionData);
+          if (!newTransaction.items || !Array.isArray(newTransaction.items)) {
+            toast({ title: 'Error', description: 'Transaction data incomplete. Please try again.', variant: 'destructive' });
+            setGlobalLoader(false);
+            setPendingSubmit(false);
+            return;
+          }
+          setCompletedTransaction({
+            ...newTransaction,
+            customer: customers.find(c => c.name === newTransaction.customer_name) || null,
+            customer_name: newTransaction.customer_name,
+            vendor: vendors.find(v => v.name === newTransaction.vendor_name) || null,
+            vendor_name: newTransaction.vendor_name,
+          });
+          setShowSuccessDialog(true);
+          toast({ title: 'Success', description: `${type === 'sale' ? 'Sale' : type === 'purchase' ? 'Purchase' : 'Return'} transaction completed successfully` });
+        } catch (err: any) {
+          toast({ title: 'Error', description: err.message || 'Transaction failed', variant: 'destructive' });
+        }
+        setGlobalLoader(false);
+        setPendingSubmit(false);
       }
-    }
-
-    const transactionData = {
-      type,
-      customerId: type === 'sale' ? customerId : (type === 'return' && returnPartyType === 'customer' ? customerId : undefined),
-      vendorId: type === 'purchase' ? vendorId : (type === 'return' && returnPartyType === 'vendor' ? vendorId : undefined),
-      items: validItems.map(({ id, ...item }) => item),
-      totalAmount: validItems.reduce((sum, item) => sum + item.totalPrice, 0),
-      date: new Date().toISOString(),
     };
+    runTransaction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSubmit]);
 
-    if (isEditMode && transaction) {
-      await updateTransaction(transaction.id, transactionData);
-      toast({
-        title: 'Success',
-        description: 'Transaction updated successfully',
-      });
-      onClose();
-      return;
-    } else {
-      const newTransaction = await addTransaction(transactionData);
-
-      // Get the latest transaction (the one we just added) for the success dialog
-      const customer = type === 'sale' || (type === 'return' && newTransaction.customerId) ? customers.find(c => c.id === (newTransaction.customerId || customerId)) : undefined;
-      const vendor = type === 'purchase' || (type === 'return' && newTransaction.vendorId) ? vendors.find(v => v.id === (newTransaction.vendorId || vendorId)) : undefined;
-      
-      setCompletedTransaction({
-        ...newTransaction,
-        customer,
-        vendor
-      });
-      setShowSuccessDialog(true);
-
-      toast({
-        title: "Success",
-        description: `${type === 'sale' ? 'Sale' : type === 'purchase' ? 'Purchase' : 'Return'} transaction completed successfully`,
-      });
-    }
-  };
-
+  // On mount, fetch data and set initial state
   useEffect(() => {
     fetchProducts();
     fetchCustomers();
     fetchVendors();
     if (isEditMode && transaction) {
-      setItems(transaction.items.map((item) => ({
+      setItems(transaction.items.map(item => ({
         id: crypto.randomUUID(),
         ...item,
       })));
-      if (transaction.type === 'sale') setCustomerId(transaction.customerId || '');
-      if (transaction.type === 'purchase') setVendorId(transaction.vendorId || '');
+      if (transaction.type === 'sale' && transaction.customer_name) {
+        const customer = customers.find(c => c.name === transaction.customer_name);
+        if (customer) setCustomerId(customer.id);
+      }
+      if (transaction.type === 'purchase' && transaction.vendor_name) {
+        const vendor = vendors.find(v => v.name === transaction.vendor_name);
+        if (vendor) setVendorId(vendor.id);
+      }
     } else if (items.length === 0) {
       addItem();
     }
-  }, [fetchProducts, fetchCustomers, fetchVendors, isEditMode, transaction, addItem]);
+    // eslint-disable-next-line
+  }, [fetchProducts, fetchCustomers, fetchVendors, isEditMode, transaction]);
 
   return (
     <>
@@ -345,7 +319,7 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                                     <p className="text-sm text-gray-500">{item.phoneNo}</p>
                                     {item.balance > 0 && (
                                       <p className="text-sm text-orange-600">
-                                        Balance: {item.balance.toFixed(2)}
+                                        Balance: {Number(item.balance || 0).toFixed(2)}
                                       </p>
                                     )}
                                   </div>
@@ -470,7 +444,7 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
               className="w-full justify-between h-10"
               size="sm"
             >
-              {item.productId ? (
+              {item.productName ? (
                 <span className="truncate">{item.productName}</span>
               ) : (
                 <span className="text-gray-500">Select product...</span>
@@ -489,14 +463,14 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
                       key={product.id}
                       value={product.name}
                       onSelect={() => {
-                        onUpdate(item.id, 'productId', product.id);
+                        onUpdate(item.id, 'productName', product.name);
                         setOpenProduct(false);
                       }}
                     >
                       <Check
                         className={cn(
                           "mr-2 h-4 w-4",
-                          item.productId === product.id ? "opacity-100" : "opacity-0"
+                          item.productName === product.name ? "opacity-100" : "opacity-0"
                         )}
                       />
                       <div>

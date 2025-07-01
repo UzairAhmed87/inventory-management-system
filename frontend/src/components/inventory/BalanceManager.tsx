@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { DollarSign, Users, Truck, Calendar, FileDown } from 'lucide-react';
 import { useInventoryStore } from '@/store/inventoryStore';
-import { toast } from '@/hooks/use-toast';
+import { toast } from '../ui/use-toast';
 import { ExportUtils } from '@/utils/exportUtils';
 import { PaymentSuccessDialog } from './PaymentSuccessDialog';
 import { CompletedPayment } from '@/types';
@@ -59,7 +59,7 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
       return;
     }
 
-    const entity = entities.find(e => e.id === selectedId);
+    const entity = entities.find(e => e.name === selectedId);
     if (!entity) return;
 
     const amount = parseFloat(paymentData.amount);
@@ -74,15 +74,15 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
 
     const newPayment = await addBalancePayment({
       type: type === 'customer' ? 'customer_payment' : 'vendor_payment',
-      customerId: type === 'customer' ? selectedId : undefined,
-      vendorId: type === 'vendor' ? selectedId : undefined,
+      customer_name: type === 'customer' ? selectedId : undefined,
+      vendor_name: type === 'vendor' ? selectedId : undefined,
       amount,
       date: new Date().toISOString(),
       notes: paymentData.notes
       // invoiceNumber: ''
     });
 
-    const entityForDialog = entities.find(e => e.id === selectedId);
+    const entityForDialog = entities.find(e => e.name === selectedId);
     await fetchBalancePayments();
 
     setCompletedPayment({
@@ -112,11 +112,11 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
 
   const exportPayments = (format: 'excel' | 'pdf') => {
     const data = paymentsForType.map(payment => {
-      const entity = entities.find(e => type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId);
+      const entity = entities.find(e => type === 'customer' ? e.name === payment.customer_name : e.name === payment.vendor_name);
       return {
         Date: new Date(payment.date).toLocaleDateString(),
         'Invoice No': payment.invoiceNumber,
-        ID: type === 'customer' ? payment.customerId : payment.vendorId,
+        ID: type === 'customer' ? payment.customer_name : payment.vendor_name,
         Name: entity?.name || 'N/A',
         Notes: payment.notes || '-',
         Amount: payment.amount,
@@ -221,7 +221,7 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
               <tbody>
                 {paymentsForType
                   .filter(payment => {
-                    const entity = entities.find(e => type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId);
+                    const entity = entities.find(e => type === 'customer' ? e.name === payment.customer_name : e.name === payment.vendor_name);
                     const name = entity?.name?.toLowerCase() || '';
                     const invoice = payment.invoiceNumber?.toLowerCase() || '';
                     const term = searchTerm.toLowerCase();
@@ -231,7 +231,7 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
                   .slice(0, 10)
                   .map((payment) => {
                     const entity = entities.find(e => 
-                      type === 'customer' ? e.id === payment.customerId : e.id === payment.vendorId
+                      type === 'customer' ? e.name === payment.customer_name : e.name === payment.vendor_name
                     );
                     return (
                       <tr key={payment.id} className="border-b hover:bg-gray-50">

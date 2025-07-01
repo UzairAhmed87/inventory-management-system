@@ -1,42 +1,37 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { setAuthToken } from '@/services/api';
 
 interface AuthState {
   isAuthenticated: boolean;
+  token: string | null;
   currentUser: string | null;
-  login: (userId: string, password: string) => boolean;
+  companyName: string | null;
+  login: (token: string, login_id: string, companyName: string) => void;
   logout: () => void;
 }
 
-// Mock user database - in real app this would be in a backend database
-const mockUsers = [
-  { userId: 'admin', password: 'admin123' },
-  { userId: 'manager', password: 'manager123' },
-  { userId: 'user1', password: 'password123' }
-];
-
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       isAuthenticated: false,
+      token: null,
       currentUser: null,
-      
-      login: (userId: string, password: string) => {
-        const user = mockUsers.find(u => u.userId === userId && u.password === password);
-        if (user) {
-          set({ isAuthenticated: true, currentUser: userId });
-          return true;
-        }
-        return false;
+      companyName: null,
+      login: (token: string, login_id: string, companyName: string) => {
+        setAuthToken(token);
+        set({ isAuthenticated: true, token, currentUser: login_id, companyName });
       },
-      
       logout: () => {
-        set({ isAuthenticated: false, currentUser: null });
+        setAuthToken('');
+        set({ isAuthenticated: false, token: null, currentUser: null, companyName: null });
       }
     }),
     {
       name: 'auth-storage',
+      onRehydrateStorage: () => (state) => {
+        if (state?.token) setAuthToken(state.token);
+      }
     }
   )
 );

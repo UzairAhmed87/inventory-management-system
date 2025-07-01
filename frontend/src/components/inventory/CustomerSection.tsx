@@ -22,6 +22,8 @@ import { PdfExportButton } from './PdfExportButton';
 import { TransactionForm } from './TransactionForm';
 import { toast } from 'sonner';
 import { MonthlySummaryPDF } from './MonthlySummaryPDF';
+import { apiService, LedgerEntry } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
 
 export const CustomerSection = () => {
   const { 
@@ -34,7 +36,8 @@ export const CustomerSection = () => {
     fetchTransactions,
     addBalancePayment,
     balancePayments,
-    fetchBalancePayments
+    fetchBalancePayments,
+    setGlobalLoader
   } = useInventoryStore();
 
   const [showForm, setShowForm] = useState(false);
@@ -52,13 +55,17 @@ export const CustomerSection = () => {
   const [isClient, setIsClient] = useState(false);
 
   const [showReturnForm, setShowReturnForm] = useState(false);
-  const [returnCustomerId, setReturnCustomerId] = useState<string | null>(null);
+  const [returnCustomerName, setReturnCustomerName] = useState<string | null>(null);
 
   const [monthlySummaryCustomer, setMonthlySummaryCustomer] = useState<string | null>(null);
 
   const [showOutstandingDialog, setShowOutstandingDialog] = useState(false);
   const [outstandingDateTo, setOutstandingDateTo] = useState('');
   const [outstandingData, setOutstandingData] = useState<any[]>([]);
+
+  const [customerLedger, setCustomerLedger] = useState<LedgerEntry[]>([]);
+
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
 
   useEffect(() => {
     fetchCustomers();
@@ -73,15 +80,34 @@ export const CustomerSection = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phoneNo) return;
-
-    if (editingCustomer) {
-      await updateCustomer(editingCustomer, formData);
-      setEditingCustomer(null);
-    } else {
-      await addCustomer(formData);
+    setGlobalLoader(true);
+    try {
+      if (editingCustomer) {
+        await updateCustomer(editingCustomer, formData);
+        setEditingCustomer(null);
+      } else {
+        await addCustomer(formData);
+      }
+      setFormData({ name: '', phoneNo: '' });
+      setShowForm(false);
+    } catch (err: any) {
+      let message = err?.message || 'Failed to save customer';
+      if (
+        message.toLowerCase().includes('already exists') ||
+        message.toLowerCase().includes('duplicate key value violates unique constraint')
+      ) {
+        message = 'A customer with this phone number or name already exists.';
+      }
+      toast(
+        message,
+        {
+          description: 'Error',
+          className: 'bg-red-500 text-white',
+        }
+      );
+    } finally {
+      setGlobalLoader(false);
     }
-    setFormData({ name: '', phoneNo: '' });
-    setShowForm(false);
   };
 
   const handleEdit = (customer: Customer) => {
@@ -102,9 +128,9 @@ export const CustomerSection = () => {
     setShowForm(false);
   };
   
-  const getCustomerLedger = (customerId: string) => {
+  const getCustomerLedger = (customerName: string) => {
     const customerTransactions = transactions
-      .filter(t => t.customerId === customerId && (t.type === 'sale' || t.type === 'return'))
+      .filter(t => t.customer_name === customerName && (t.type === 'sale' || t.type === 'return'))
       .filter(t => {
         if (dateFrom && new Date(t.date) < new Date(dateFrom)) return false;
         if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
@@ -112,7 +138,7 @@ export const CustomerSection = () => {
       });
 
     const customerPayments = balancePayments
-      .filter(p => p.customerId === customerId && p.type === 'customer_payment')
+      .filter(p => p.customer_name === customerName && p.type === 'customer_payment')
       .filter(p => {
         if (dateFrom && new Date(p.date) < new Date(dateFrom)) return false;
         if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
@@ -153,11 +179,11 @@ export const CustomerSection = () => {
     });
   };
 
-  const exportCustomerLedgerData = (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId);
+  const exportCustomerLedgerData = (customerName: string) => {
+    const customer = customers.find(c => c.name === customerName);
     if (!customer) return null;
 
-    const ledger = getCustomerLedger(customerId);
+    const ledger = getCustomerLedger(customerName);
 
     return ledger.map(entry => ({
       Date: entry.date.toLocaleDateString(),
@@ -178,7 +204,7 @@ export const CustomerSection = () => {
       // Call addBalancePayment without invoiceNumber to let inventoryStore generate it
       const newPayment = await addBalancePayment({
         type: 'customer_payment',
-        customerId: customer.id,
+        customer_name: customer.name,
         amount,
         notes: paymentData.notes,
         date: new Date().toISOString(), // Set date here
@@ -194,6 +220,8 @@ export const CustomerSection = () => {
         date: newPayment.date,
         notes: paymentData.notes,
         invoiceNumber: newPayment.invoiceNumber, // Use the generated invoiceNumber
+        previousBalance: newPayment.previousBalance,
+        newBalance: newPayment.newBalance,
       });
 
       setShowSuccessDialog(true);
@@ -212,53 +240,38 @@ export const CustomerSection = () => {
     customer.phoneNo.includes(searchTerm)
   );
 
-  const handleReturn = (customerId: string) => {
-    setReturnCustomerId(customerId);
+  const handleReturn = (customerName: string) => {
+    setReturnCustomerName(customerName);
     setShowReturnForm(true);
   };
 
-  const getAllOutstandingBalances = (dateTo: string) => {
-    return customers.map(customer => {
-      const customerTransactions = transactions
-        .filter(t => t.customerId === customer.id && (t.type === 'sale' || t.type === 'return'))
-        .filter(t => {
-          if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
-          return true;
-        });
-      const customerPayments = balancePayments
-        .filter(p => p.customerId === customer.id && p.type === 'customer_payment')
-        .filter(p => {
-          if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
-          return true;
-        });
-      let runningBalance = 0;
-      const ledgerEntries = [
-        ...customerTransactions.map(t => ({
-          debit: t.type === 'sale' ? t.totalAmount : 0,
-          credit: t.type === 'return' ? t.totalAmount : 0,
-        })),
-        ...customerPayments.map(p => ({
-          debit: 0,
-          credit: p.amount,
-        })),
-      ];
-      ledgerEntries.forEach(entry => {
-        runningBalance = runningBalance + entry.debit - entry.credit;
-      });
-      return {
+  const getAllOutstandingBalances = () => {
+    return customers
+      .filter(customer => customer.balance > 0)
+      .map(customer => ({
         Name: customer.name,
         'Phone No': customer.phoneNo,
-        'Outstanding Balance': runningBalance,
-      };
-    }).filter(row => row['Outstanding Balance'] > 0);
+        'Outstanding Balance': customer.balance,
+      }));
   };
 
   useEffect(() => {
     if (showOutstandingDialog) {
-      setOutstandingData(getAllOutstandingBalances(outstandingDateTo));
+      setOutstandingData(getAllOutstandingBalances());
     }
     // eslint-disable-next-line
-  }, [showOutstandingDialog, outstandingDateTo, customers, transactions, balancePayments]);
+  }, [showOutstandingDialog, customers]);
+
+  useEffect(() => {
+    if (selectedCustomer) {
+      const customer = customers.find(c => c.id === selectedCustomer);
+      if (customer) {
+        apiService.getCustomerLedger(customer.name, dateFrom || undefined, dateTo || undefined)
+          .then(setCustomerLedger)
+          .catch(() => setCustomerLedger([]));
+      }
+    }
+  }, [selectedCustomer, dateFrom, dateTo, customers]);
 
   return (
     <div className="space-y-6">
@@ -368,11 +381,11 @@ export const CustomerSection = () => {
                 <div>
                   <p className="text-sm text-gray-600">Phone: {customer.phoneNo}</p>
                   <p className="text-sm text-gray-600">
-                    Sales: {transactions.filter(t => t.customerId === customer.id && t.type === 'sale').length}
+                    Sales: {transactions.filter(t => t.customer_name === customer.name && t.type === 'sale').length}
                   </p>
                   {customer.balance > 0 && (
                     <p className="text-sm text-red-600">
-                      Balance: PKR {customer.balance.toFixed(2)}
+                      Balance: PKR {Number(customer.balance || 0).toFixed(2)}
                     </p>
                   )}
                 </div>
@@ -471,25 +484,37 @@ export const CustomerSection = () => {
               {selectedCustomer && (
                 <PdfExportButton
                   document={
-                    <LedgerPDF 
-                      data={exportCustomerLedgerData(selectedCustomer) || []}
+                    <LedgerPDF
+                      data={customerLedger.map(entry => ({
+                        Date: new Date(entry.date).toLocaleDateString(),
+                        Description: entry.description,
+                        Debit: entry.debit > 0 ? entry.debit.toFixed(2) : '',
+                        Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
+                        Balance: entry.balance.toFixed(2),
+                      }))}
                       title={`${customers.find(c => c.id === selectedCustomer)?.name} - Ledger`}
                       subtitle={`Date Range: ${(dateFrom && dateTo) ? `${dateFrom} to ${dateTo}` : 'All Time'}`}
-                      companyName="Company Name"
+                      companyName={companyName}
                     />
                   }
                   fileName={`${customers.find(c => c.id === selectedCustomer)?.name}_Ledger.pdf`}
                 />
               )}
               <Button onClick={() => {
-                const data = exportCustomerLedgerData(selectedCustomer as string);
-                if(data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === selectedCustomer)?.name}_Ledger`);
+                const data = customerLedger.map(entry => ({
+                  Date: new Date(entry.date).toLocaleDateString(),
+                  Description: entry.description,
+                  Debit: entry.debit > 0 ? entry.debit.toFixed(2) : '',
+                  Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
+                  Balance: entry.balance.toFixed(2),
+                }));
+                if(data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === selectedCustomer)?.name}_Ledger`, companyName);
               }}>
                 Export Excel
               </Button>
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 max-h-96 overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -501,34 +526,24 @@ export const CustomerSection = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedCustomer && getCustomerLedger(selectedCustomer).map((entry, index) => (
+                {selectedCustomer && customerLedger.map((entry, index) => (
                   <TableRow key={index}>
-                    <TableCell>{entry.date.toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {Array.isArray(entry.description) ? (
-                        <div>
-                          {entry.description.map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
-                        </div>
-                      ) : (
-                        entry.description
-                      )}
-                    </TableCell>
+                    <TableCell>{new Date(entry.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{entry.description}</TableCell>
                     <TableCell className="text-right">{entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right">{entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right">{entry.balance.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
-                {selectedCustomer && getCustomerLedger(selectedCustomer).length > 0 && (
+                {selectedCustomer && customerLedger.length > 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
                     <TableCell className="font-bold text-right">
-                      {getCustomerLedger(selectedCustomer)[getCustomerLedger(selectedCustomer).length - 1].balance.toFixed(2)}
+                      {customerLedger[customerLedger.length - 1].balance.toFixed(2)}
                     </TableCell>
                   </TableRow>
                 )}
-                {selectedCustomer && getCustomerLedger(selectedCustomer).length === 0 && (
+                {selectedCustomer && customerLedger.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center">No transactions or payments in this period.</TableCell>
                   </TableRow>
@@ -539,16 +554,16 @@ export const CustomerSection = () => {
         </DialogContent>
       </Dialog>
 
-      {showReturnForm && returnCustomerId && (
+      {showReturnForm && returnCustomerName && (
         <Dialog open={showReturnForm} onOpenChange={setShowReturnForm}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Return Products for {customers.find(c => c.id === returnCustomerId)?.name}</DialogTitle>
+              <DialogTitle>Return Products for {returnCustomerName}</DialogTitle>
             </DialogHeader>
             <TransactionForm
               type="return"
               onClose={() => setShowReturnForm(false)}
-              customerId={returnCustomerId}
+              customerId={returnCustomerName}
             />
           </DialogContent>
         </Dialog>
@@ -575,7 +590,7 @@ export const CustomerSection = () => {
                   'Name': row['Name'],
                   'Phone No': row['Phone No'],
                   'Outstanding Balance': row['Outstanding Balance']
-                })), 'Outstanding_Customers')}
+                })), 'Outstanding_Customers', companyName)}
                 disabled={outstandingData.length === 0}
               >
                 Export Excel
@@ -586,7 +601,7 @@ export const CustomerSection = () => {
                   {
                     title: 'Customer Outstanding',
                     dateRange: outstandingDateTo ? `Till ${outstandingDateTo}` : 'All Time',
-                    companyName: 'Company Name',
+                    companyName: companyName,
                     fileName: 'Outstanding_Customers_Ledger'
                   }
                 )}
@@ -613,7 +628,7 @@ export const CustomerSection = () => {
                     <tr key={idx}>
                       <td className="border px-2 py-1">{row['Name']}</td>
                       <td className="border px-2 py-1">{row['Phone No']}</td>
-                      <td className="border px-2 py-1 text-left"> {row['Outstanding Balance'].toFixed(2)}</td>
+                      <td className="border px-2 py-1 text-left"> {Number(row['Outstanding Balance']).toFixed(2)}</td>
                     </tr>
                   ))
                 )}

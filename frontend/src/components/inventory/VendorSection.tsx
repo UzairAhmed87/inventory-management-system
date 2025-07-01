@@ -21,9 +21,11 @@ import { PdfExportButton } from './PdfExportButton';
 import { CompletedPayment } from '@/types';
 import {toast} from 'sonner';
 import { MonthlySummaryPDF } from './MonthlySummaryPDF';
+import { apiService, LedgerEntry } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
 
 export const VendorSection = () => {
-  const { vendors, addVendor, updateVendor, deleteVendor, transactions, fetchVendors, fetchTransactions, addBalancePayment, balancePayments, fetchBalancePayments } = useInventoryStore();
+  const { vendors, addVendor, updateVendor, deleteVendor, transactions, fetchVendors, fetchTransactions, addBalancePayment, balancePayments, fetchBalancePayments, setGlobalLoader } = useInventoryStore();
   const [showForm, setShowForm] = useState(false);
   const [editingVendor, setEditingVendor] = useState<string | null>(null);
   const [selectedVendor, setSelectedVendor] = useState<string | null>(null);
@@ -42,6 +44,8 @@ export const VendorSection = () => {
   const [showOutstandingDialog, setShowOutstandingDialog] = useState(false);
   const [outstandingDateTo, setOutstandingDateTo] = useState('');
   const [outstandingData, setOutstandingData] = useState<any[]>([]);
+  const [vendorLedger, setVendorLedger] = useState<LedgerEntry[]>([]);
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
 
   useEffect(() => {
     fetchVendors();
@@ -52,16 +56,34 @@ export const VendorSection = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.phoneNo) return;
-
-    if (editingVendor) {
-      await updateVendor(editingVendor, formData);
-      setEditingVendor(null);
-    } else {
-      await addVendor(formData);
+    setGlobalLoader(true);
+    try {
+      if (editingVendor) {
+        await updateVendor(editingVendor, formData);
+        setEditingVendor(null);
+      } else {
+        await addVendor(formData);
+      }
+      setFormData({ name: '', phoneNo: '' });
+      setShowForm(false);
+    } catch (err: any) {
+      let message = err?.message || 'Failed to save vendor';
+      if (
+        message.toLowerCase().includes('already exists') ||
+        message.toLowerCase().includes('duplicate key value violates unique constraint')
+      ) {
+        message = 'A vendor with this phone number or name already exists.';
+      }
+      toast(
+        message,
+        {
+          description: 'Error',
+          className: 'bg-red-500 text-white',
+        }
+      );
+    } finally {
+      setGlobalLoader(false);
     }
-
-    setFormData({ name: '', phoneNo: '' });
-    setShowForm(false);
   };
 
   const handleEdit = (vendor: Vendor) => {
@@ -85,9 +107,9 @@ export const VendorSection = () => {
     setShowForm(false);
   };
 
-  const getVendorLedger = (vendorId: string) => {
+  const getVendorLedger = (vendorName: string) => {
     const vendorTransactions = transactions
-      .filter(t => t.vendorId === vendorId && (t.type === 'purchase' || t.type === 'return'))
+      .filter(t => t.vendor_name === vendorName && (t.type === 'purchase' || t.type === 'return'))
       .filter(t => {
         if (dateFrom && new Date(t.date) < new Date(dateFrom)) return false;
         if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
@@ -95,7 +117,7 @@ export const VendorSection = () => {
       });
 
     const vendorPayments = balancePayments
-      .filter(p => p.vendorId === vendorId && p.type === 'vendor_payment')
+      .filter(p => p.vendor_name === vendorName && p.type === 'vendor_payment')
       .filter(p => {
         if (dateFrom && new Date(p.date) < new Date(dateFrom)) return false;
         if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
@@ -136,11 +158,11 @@ export const VendorSection = () => {
     });
   };
 
-  const exportVendorLedgerData = (vendorId: string) => {
-    const vendor = vendors.find(v => v.id === vendorId);
+  const exportVendorLedgerData = (vendorName: string) => {
+    const vendor = vendors.find(v => v.name === vendorName);
     if (!vendor) return null;
 
-    const ledger = getVendorLedger(vendorId);
+    const ledger = getVendorLedger(vendorName);
 
     return ledger.map(entry => ({
       Date: entry.date.toLocaleDateString(),
@@ -160,7 +182,7 @@ export const VendorSection = () => {
       // Call addBalancePayment without invoiceNumber to let inventoryStore generate it
       const newPayment = await addBalancePayment({
         type: 'vendor_payment',
-        vendorId: vendor.id,
+        vendor_name: vendor.name,
         amount,
         notes: paymentData.notes,
         date: new Date().toISOString(), // Set date here
@@ -176,6 +198,8 @@ export const VendorSection = () => {
         date: newPayment.date,
         notes: paymentData.notes,
         invoiceNumber: newPayment.invoiceNumber, // Use the generated invoiceNumber
+        previousBalance: newPayment.previousBalance,
+        newBalance: newPayment.newBalance,
       });
 
       setShowSuccessDialog(true);
@@ -194,48 +218,33 @@ export const VendorSection = () => {
     vendor.phoneNo.includes(searchTerm)
   );
 
-  const getAllOutstandingBalances = (dateTo: string) => {
-    return vendors.map(vendor => {
-      const vendorTransactions = transactions
-        .filter(t => t.vendorId === vendor.id && (t.type === 'purchase' || t.type === 'return'))
-        .filter(t => {
-          if (dateTo && new Date(t.date) > new Date(dateTo)) return false;
-          return true;
-        });
-      const vendorPayments = balancePayments
-        .filter(p => p.vendorId === vendor.id && p.type === 'vendor_payment')
-        .filter(p => {
-          if (dateTo && new Date(p.date) > new Date(dateTo)) return false;
-          return true;
-        });
-      let runningBalance = 0;
-      const ledgerEntries = [
-        ...vendorTransactions.map(t => ({
-          debit: t.type === 'purchase' ? t.totalAmount : 0,
-          credit: t.type === 'return' ? t.totalAmount : 0,
-        })),
-        ...vendorPayments.map(p => ({
-          debit: 0,
-          credit: p.amount,
-        })),
-      ];
-      ledgerEntries.forEach(entry => {
-        runningBalance = runningBalance + entry.debit - entry.credit;
-      });
-      return {
+  const getAllOutstandingBalances = () => {
+    return vendors
+      .filter(vendor => vendor.balance > 0)
+      .map(vendor => ({
         Name: vendor.name,
         'Phone No': vendor.phoneNo,
-        'Outstanding Balance': runningBalance,
-      };
-    }).filter(row => row['Outstanding Balance'] > 0);
+        'Outstanding Balance': vendor.balance,
+      }));
   };
 
   useEffect(() => {
     if (showOutstandingDialog) {
-      setOutstandingData(getAllOutstandingBalances(outstandingDateTo));
+      setOutstandingData(getAllOutstandingBalances());
     }
     // eslint-disable-next-line
-  }, [showOutstandingDialog, outstandingDateTo, vendors, transactions, balancePayments]);
+  }, [showOutstandingDialog, vendors]);
+
+  useEffect(() => {
+    if (selectedVendor) {
+      const vendor = vendors.find(v => v.id === selectedVendor);
+      if (vendor) {
+        apiService.getVendorLedger(vendor.name, dateFrom || undefined, dateTo || undefined)
+          .then(setVendorLedger)
+          .catch(() => setVendorLedger([]));
+      }
+    }
+  }, [selectedVendor, dateFrom, dateTo, vendors]);
 
   return (
     <div className="space-y-6">
@@ -355,7 +364,7 @@ export const VendorSection = () => {
                 <div>
                   <p className="text-sm text-gray-600">Phone: {vendor.phoneNo}</p>
                   <p className="text-sm text-gray-600">
-                    Purchases: {transactions.filter(t => t.vendorId === vendor.id && t.type === 'purchase').length}
+                    Purchases: {transactions.filter(t => t.vendor_name === vendor.name && t.type === 'purchase').length}
                   </p>
                   {vendor.balance > 0 && (
                     <p className="text-sm text-green-600">
@@ -460,25 +469,37 @@ export const VendorSection = () => {
               {selectedVendor && (
                 <PdfExportButton
                   document={
-                    <LedgerPDF 
-                      data={exportVendorLedgerData(selectedVendor) || []}
+                    <LedgerPDF
+                      data={vendorLedger.map(entry => ({
+                        Date: new Date(entry.date).toLocaleDateString(),
+                        Description: entry.description,
+                        Debit: entry.debit > 0 ? entry.debit.toFixed(2) : '',
+                        Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
+                        Balance: entry.balance.toFixed(2),
+                      }))}
                       title={`${vendors.find(v => v.id === selectedVendor)?.name} - Ledger`}
                       subtitle={`Date Range: ${(dateFrom && dateTo) ? `${dateFrom} to ${dateTo}` : 'All Time'}`}
-                      companyName='Company Name'
+                      companyName={companyName}
                     />
                   }
                   fileName={`${vendors.find(v => v.id === selectedVendor)?.name}_Ledger.pdf`}
                 />
               )}
               <Button onClick={() => {
-                const data = exportVendorLedgerData(selectedVendor as string);
-                if (data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === selectedVendor)?.name}_Ledger`);
+                const data = vendorLedger.map(entry => ({
+                  Date: new Date(entry.date).toLocaleDateString(),
+                  Description: entry.description,
+                  Debit: entry.debit > 0 ? entry.debit.toFixed(2) : '',
+                  Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
+                  Balance: entry.balance.toFixed(2),
+                }));
+                if (data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === selectedVendor)?.name}_Ledger`, companyName);
               }}>
                 Export Excel
               </Button>
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 max-h-96 overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -490,47 +511,30 @@ export const VendorSection = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {selectedVendor && getVendorLedger(selectedVendor).map((entry, index) => (
+                {selectedVendor && vendorLedger.map((entry, index) => (
                   <TableRow key={index}>
-                    <TableCell>{entry.date.toLocaleDateString()}</TableCell>
-                    <TableCell>
-                      {Array.isArray(entry.description) ? (
-                        <div>
-                          {entry.description.map((line, i) => (
-                            <div key={i}>{line}</div>
-                          ))}
-                        </div>
-                      ) : (
-                        entry.description
-                      )}
-                    </TableCell>
+                    <TableCell>{new Date(entry.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{entry.description}</TableCell>
                     <TableCell className="text-right">{entry.debit > 0 ? `${entry.debit.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right">{entry.credit > 0 ? `${entry.credit.toFixed(2)}` : '-'}</TableCell>
                     <TableCell className="text-right">{entry.balance.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
-                {selectedVendor && getVendorLedger(selectedVendor).length > 0 && (
+                {selectedVendor && vendorLedger.length > 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
                     <TableCell className="font-bold text-right">
-                      {getVendorLedger(selectedVendor)[getVendorLedger(selectedVendor).length - 1].balance.toFixed(2)}
+                      {vendorLedger[vendorLedger.length - 1].balance.toFixed(2)}
                     </TableCell>
                   </TableRow>
                 )}
-                {selectedVendor && getVendorLedger(selectedVendor).length === 0 && (
+                {selectedVendor && vendorLedger.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center">No transactions or payments in this period.</TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-            {/* <div className="flex justify-between items-end mt-4 text-xs text-gray-600">
-              <div>Generated: {new Date().toLocaleString()}</div>
-              <div className="text-right">
-                <div>Software developed by Uzair Ahmed</div>
-                <div>03172146698</div>
-              </div>
-            </div> */}
           </div>
         </DialogContent>
       </Dialog>
@@ -556,7 +560,7 @@ export const VendorSection = () => {
                   'Name': row['Name'],
                   'Phone No': row['Phone No'],
                   'Outstanding Balance': row['Outstanding Balance']
-                })), 'Outstanding_Vendors')}
+                })), 'Outstanding_Vendors', companyName)}
                 disabled={outstandingData.length === 0}
               >
                 Export Excel
@@ -567,7 +571,7 @@ export const VendorSection = () => {
                   {
                     title: 'Vendor Outstanding',
                     dateRange: outstandingDateTo ? `Till ${outstandingDateTo}` : 'All Time',
-                    companyName: 'Company Name',
+                    companyName: companyName,
                     fileName: 'Outstanding_Vendors_Ledger'
                   }
                 )}
@@ -594,7 +598,7 @@ export const VendorSection = () => {
                     <tr key={idx}>
                       <td className="border px-2 py-1">{row['Name']}</td>
                       <td className="border px-2 py-1">{row['Phone No']}</td>
-                      <td className="border px-2 py-1 ">{row['Outstanding Balance'].toFixed(2)}</td>
+                      <td className="border px-2 py-1 ">{Number(row['Outstanding Balance']).toFixed(2)}</td>
                     </tr>
                   ))
                 )}

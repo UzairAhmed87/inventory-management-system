@@ -1,20 +1,22 @@
 import React, { useState, useRef } from 'react';
 import { Lock } from 'lucide-react';
+import { apiService } from '@/services/api';
+import { useAuthStore } from '@/store/authStore';
 
 interface SensitiveCardProps {
   label: string;
   value: React.ReactNode;
   icon?: React.ReactNode;
   className?: string;
-  pin?: string;
 }
 
-export const SensitiveCard: React.FC<SensitiveCardProps> = ({ label, value, icon, className, pin = '1234' }) => {
+export const SensitiveCard: React.FC<SensitiveCardProps> = ({ label, value, icon, className }) => {
   const [locked, setLocked] = useState(true);
   const [showPinInput, setShowPinInput] = useState(false);
   const [inputPin, setInputPin] = useState('');
   const [error, setError] = useState('');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentUser = useAuthStore(state => state.currentUser);
 
   const handleCardClick = () => {
     if (locked && !showPinInput) {
@@ -24,17 +26,27 @@ export const SensitiveCard: React.FC<SensitiveCardProps> = ({ label, value, icon
     }
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputPin === pin) {
-      setLocked(false);
-      setShowPinInput(false);
-      setError('');
-      timeoutRef.current = setTimeout(() => {
-        setLocked(true);
-      }, 2500);
-    } else {
-      setError('Incorrect PIN');
+    if (!currentUser) {
+      setError('Not logged in');
+      return;
+    }
+    // Use the entered password as the PIN and verify with backend
+    try {
+      const result = await apiService.verifyPassword(currentUser, inputPin);
+      if (result.valid) {
+        setLocked(false);
+        setShowPinInput(false);
+        setError('');
+        timeoutRef.current = setTimeout(() => {
+          setLocked(true);
+        }, 2500);
+      } else {
+        setError('Incorrect password');
+      }
+    } catch (err) {
+      setError('Verification failed');
     }
   };
 
@@ -93,9 +105,9 @@ export const SensitiveCard: React.FC<SensitiveCardProps> = ({ label, value, icon
               value={inputPin}
               onChange={e => setInputPin(e.target.value)}
               className="border rounded px-3 py-1 text-lg text-center focus:outline-none focus:ring focus:border-blue-400"
-              maxLength={8}
+              maxLength={32}
               autoFocus
-              placeholder="Enter PIN"
+              placeholder="Enter password"
             />
             <button type="submit" className="px-4 py-1 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">Unlock</button>
             {error && <span className="text-xs text-red-500 mt-1">{error}</span>}

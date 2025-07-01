@@ -3,86 +3,159 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Plus, Edit, Trash, Package, Search, Filter, Calendar } from 'lucide-react';
-import { useInventoryStore, Product, Transaction } from '@/store/inventoryStore';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { ExportUtils } from '@/utils/exportUtils';
+import { apiService, Product, safeNumber, StockReportEntry } from '@/services/api';
+import { useToast } from '@/use-toast';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useAuthStore } from '@/store/authStore';
+import { useInventoryStore } from '@/store/inventoryStore';
 
 type StockFilter = 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
 
-export const ProductSection = () => {
-  const { products, addProduct, updateProduct, deleteProduct, fetchProducts, transactions, fetchTransactions } = useInventoryStore();
+export default function ProductSection() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState<StockFilter>('all');
   const [formData, setFormData] = useState({
     name: '',
-    quantity: '',
+    quantity: ''
   });
   const [showStockReport, setShowStockReport] = useState(false);
   const [stockReportDate, setStockReportDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [stockReport, setStockReport] = useState<{ name: string; quantity: number }[]>([]);
+  const [stockReport, setStockReport] = useState<StockReportEntry[]>([]);
   const [loadingStock, setLoadingStock] = useState(false);
+  const { toast } = useToast();
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [showStockReportDialog, setShowStockReportDialog] = useState(false);
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
+  const setGlobalLoader = useInventoryStore(state => state.setGlobalLoader);
+
+  // Fetch products from backend
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getProducts();
+      setProducts(data);
+      setError(null);
+    } catch (err) {
+      setError('Failed to load products');
+      console.error('Error loading products:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchProducts();
-    fetchTransactions();
-  }, [fetchProducts, fetchTransactions]);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.quantity) return;
-
-    if (editingProduct) {
-      await updateProduct(editingProduct, {
-        name: formData.name,
-        quantity: parseInt(formData.quantity),
+    if (!formData.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Product name is required",
+        variant: "destructive",
       });
-      setEditingProduct(null);
-    } else {
-      await addProduct({
-        name: formData.name,
-        quantity: parseInt(formData.quantity),
-      });
+      return;
     }
-
-    setFormData({ name: '', quantity: '' });
-    setShowForm(false);
+    const quantity = safeNumber(formData.quantity);
+    setGlobalLoader(true);
+    try {
+      if (editingProduct) {
+        await apiService.updateProduct(editingProduct.id, {
+          name: formData.name,
+          quantity: quantity
+        });
+        toast({
+          title: "Success",
+          description: "Product updated successfully",
+        });
+      } else {
+        await apiService.createProduct({
+          name: formData.name,
+          quantity: quantity
+        });
+        toast({
+          title: "Success",
+          description: "Product created successfully",
+        });
+      }
+      setIsDialogOpen(false);
+      resetForm();
+      fetchProducts();
+    } catch (err: any) {
+      let message = err?.message || 'Failed to save product';
+      if (
+        message.toLowerCase().includes('already exists') ||
+        message.toLowerCase().includes('duplicate key value violates unique constraint')
+      ) {
+        message = 'A product with this name already exists.';
+      }
+      toast({
+        title: 'Error',
+        description: message,
+        variant: 'destructive',
+      });
+      console.error('Error saving product:', err);
+    } finally {
+      setGlobalLoader(false);
+    }
   };
 
   const handleEdit = (product: Product) => {
-    setEditingProduct(product.id);
+    setEditingProduct(product);
     setFormData({
       name: product.name,
-      quantity: product.quantity.toString(),
+      quantity: product.quantity.toString()
     });
-    setShowForm(true);
+    setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      await deleteProduct(id);
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    try {
+      await apiService.deleteProduct(id);
+      toast({
+        title: "Success",
+        description: "Product deleted successfully",
+      });
+      fetchProducts();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "Failed to delete product",
+        variant: "destructive",
+      });
+      console.error('Error deleting product:', err);
     }
   };
 
   const resetForm = () => {
     setFormData({ name: '', quantity: '' });
     setEditingProduct(null);
-    setShowForm(false);
+  };
+
+  const handleDialogClose = () => {
+    setIsDialogOpen(false);
+    resetForm();
   };
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = (() => {
       switch (stockFilter) {
-        case 'out-of-stock':
-          return product.quantity === 0;
-        case 'low-stock':
-          return product.quantity > 0 && product.quantity <= 10;
         case 'in-stock':
-          return product.quantity > 10;
+          return safeNumber(product.quantity) > 0;
+        case 'low-stock':
+          return safeNumber(product.quantity) > 0 && safeNumber(product.quantity) <= 5;
+        case 'out-of-stock':
+          return safeNumber(product.quantity) === 0;
         default:
           return true;
       }
@@ -90,270 +163,207 @@ export const ProductSection = () => {
     return matchesSearch && matchesFilter;
   });
 
-  // Calculate stock as of a given date
-  const calculateStockAsOfDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    // For each product, calculate initial quantity + purchases/returns - sales up to and including the date
-    return products.map(product => {
-      let qty = 0;
-      // Find all transactions up to the date
-      transactions.forEach(t => {
-        if (!t.date) return;
-        const tDate = new Date(t.date);
-        if (tDate > date) return;
-        t.items.forEach(item => {
-          if (item.productId === product.id) {
-            if (t.type === 'purchase' || t.type === 'return') {
-              qty += item.quantity;
-            } else if (t.type === 'sale') {
-              qty -= item.quantity;
-            }
-          }
-        });
-      });
-      // Add initial quantity if product was created before or on the date
-      if (!product.createdAt || new Date(product.createdAt) <= date) {
-        qty += product.quantity;
-      }
-      return { name: product.name, quantity: qty };
-    });
-  };
-
-  const handleShowStockReport = () => {
+  const fetchStockReport = async (date: string) => {
     setLoadingStock(true);
-    setTimeout(() => {
-      setStockReport(calculateStockAsOfDate(stockReportDate));
+    try {
+      // Send date as end of day to include all transactions for the selected date
+      const endOfDay = date ? `${date}T23:59:59` : undefined;
+      const data = await apiService.getStockReport(endOfDay || date);
+      setStockReport(data);
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to fetch stock report', variant: 'destructive' });
+    } finally {
       setLoadingStock(false);
-    }, 100); // Simulate async
-  };
-
-  const handleExport = (format: 'pdf' | 'excel') => {
-    const data = stockReport.map(row => ({ Product: row.name, Quantity: row.quantity }));
-    if (format === 'pdf') {
-      ExportUtils.exportToPDF(data, 'Stock Report', `As of ${stockReportDate}`);
-    } else {
-      ExportUtils.exportToExcel(data, `Stock_Report_${stockReportDate}`);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Products</h2>
-        <div className="flex gap-2">
-          <Dialog open={showForm} onOpenChange={setShowForm}>
-            <DialogTrigger asChild>
-              <Button onClick={() => setShowForm(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Product
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>
-                  {editingProduct ? 'Edit Product' : 'Add New Product'}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Product Name</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Enter product name"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="quantity">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                    placeholder="Enter quantity"
-                    required
-                  />
-                </div>
-                <div className="flex justify-end space-x-2">
-                  <Button type="button" variant="outline" onClick={resetForm}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    {editingProduct ? 'Update' : 'Add'} Product
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-          {/* Stock Report Button */}
-          <Dialog open={showStockReport} onOpenChange={setShowStockReport}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="flex items-center gap-2" onClick={() => setShowStockReport(true)}>
-                <Calendar className="h-4 w-4" />
-                Stock Report
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <div className="text-center mb-2">
-                  <div className="text-lg font-bold text-blue-900">Company Name</div>
-                  <div className="text-xl font-semibold mt-1">Stock Report</div>
-                  <div className="text-sm text-gray-600 mt-1">As of {stockReportDate}</div>
-                </div>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="stock-date">Select Date</Label>
-                  <Input
-                    id="stock-date"
-                    type="date"
-                    value={stockReportDate}
-                    onChange={e => setStockReportDate(e.target.value)}
-                  />
-                </div>
-                <Button onClick={handleShowStockReport} disabled={loadingStock} className="w-full">
-                  {loadingStock ? 'Loading...' : 'Show Stock'}
-                </Button>
-                {stockReport.length > 0 && (
-                  <>
-                    <div className="overflow-x-auto max-h-64 border rounded">
-                      <table className="min-w-full text-sm border border-gray-300">
-                        <thead>
-                          <tr className="bg-gray-200">
-                            <th className="px-2 py-1 text-left border border-gray-300">Product</th>
-                            <th className="px-2 py-1 text-right border border-gray-300">Quantity</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {stockReport.map((row, idx) => (
-                            <tr key={idx}>
-                              <td className="px-2 py-1 border border-gray-300">{row.name}</td>
-                              <td className="px-2 py-1 text-right border border-gray-300">{row.quantity}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      <Button variant="outline" onClick={() => handleExport('pdf')}>Export PDF</Button>
-                      <Button variant="outline" onClick={() => handleExport('excel')}>Export Excel</Button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+  const handleOpenStockReport = () => {
+    fetchStockReport(stockReportDate);
+    setShowStockReportDialog(true);
+  };
 
-      {/* Search and Filter Controls */}
+  const handleStockReportDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setStockReportDate(e.target.value);
+    fetchStockReport(e.target.value);
+  };
+
+  const exportStockReport = () => {
+    const data = stockReport.map(item => ({
+      'Product Name': item.product_name,
+      'Stock': item.stock
+    }));
+    ExportUtils.exportToExcel(data, `stock-report-${stockReportDate}`);
+  };
+
+  const exportStockReportPDF = () => {
+    const data = stockReport.map(item => ({
+      'Product Name': item.product_name,
+      'Stock': item.stock
+    }));
+    ExportUtils.exportToPDF(data, 'Stock Report', `As of ${stockReportDate}`, undefined, companyName);
+  };
+
+  if (loading) {
+    return (
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <Filter className="h-5 w-5 mr-2" />
-            Search & Filter
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <Label>Search Products</Label>
-              <div className="relative">
-                <Search className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
-                <Input
-                  placeholder="Search by product name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Stock Filter</Label>
-              <Select value={stockFilter} onValueChange={(value: StockFilter) => setStockFilter(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Products</SelectItem>
-                  <SelectItem value="in-stock">In Stock ({'>'}10)</SelectItem>
-                  <SelectItem value="low-stock">Low Stock (1-10)</SelectItem>
-                  <SelectItem value="out-of-stock">Out of Stock (0)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+        <CardContent className="p-6">
+          <div className="text-center">Loading products...</div>
         </CardContent>
       </Card>
+    );
+  }
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredProducts.map((product) => (
-          <Card key={product.id} className="hover:shadow-lg transition-shadow">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <div className="flex items-center space-x-2">
-                <Package className="h-5 w-5 text-blue-600" />
-                <CardTitle className="text-lg">{product.name}</CardTitle>
-              </div>
-              <div className="flex space-x-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleEdit(product)}
-                >
-                  <Edit className="h-3 w-3" />
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDelete(product.id)}
-                  className="text-red-600 hover:text-red-700"
-                >
-                  <Trash className="h-3 w-3" />
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-sm text-gray-600">Quantity:</span>
-                  <span className={`font-semibold ${
-                    product.quantity === 0 ? 'text-red-600' : 
-                    product.quantity <= 10 ? 'text-orange-600' : 'text-green-600'
-                  }`}>
-                    {product.quantity}
-                  </span>
-                </div>
-                {product.quantity === 0 && (
-                  <div className="bg-red-100 text-red-700 text-xs px-2 py-1 rounded">
-                    Out of Stock
-                  </div>
-                )}
-                {product.quantity > 0 && product.quantity <= 10 && (
-                  <div className="bg-orange-100 text-orange-700 text-xs px-2 py-1 rounded">
-                    Low Stock Warning
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+  if (error) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-center text-red-600">{error}</div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-      {filteredProducts.length === 0 && (
-        <Card className="text-center py-12">
-          <CardContent>
-            <Package className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">
-              {products.length === 0 
-                ? "No products found. Add your first product to get started."
-                : "No products match your search criteria."
-              }
-            </p>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle>Products</CardTitle>
+        <div className="flex gap-2">
+          <Button onClick={handleOpenStockReport} variant="secondary">Stock Report</Button>
+          <Button onClick={() => setIsDialogOpen(true)}>Add Product</Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Search Bar */}
+        <div className="mb-4 flex items-center gap-2">
+          <Input
+            type="text"
+            placeholder="Search products..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="max-w-xs"
+          />
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Quantity</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredProducts.map((product) => (
+              <TableRow key={product.id}>
+                <TableCell>{product.name}</TableCell>
+                <TableCell>{safeNumber(product.quantity)}</TableCell>
+                <TableCell>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEdit(product)}
+                      style={{backgroundColor:'green',color:'white'}}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDelete(product.id)}
+                      style={{backgroundColor:'red',color:'white'}}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <Dialog open={showStockReportDialog} onOpenChange={setShowStockReportDialog}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Stock Report</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center gap-2 mb-4">
+              <Label htmlFor="stock-report-date">As of date:</Label>
+              <Input
+                id="stock-report-date"
+                type="date"
+                value={stockReportDate}
+                onChange={handleStockReportDateChange}
+                max={new Date().toISOString().split('T')[0]}
+              />
+              <Button onClick={exportStockReport} size="sm" variant="outline">Export Excel</Button>
+              <Button onClick={exportStockReportPDF} size="sm" variant="outline">Export PDF</Button>
+            </div>
+            {loadingStock ? (
+              <div>Loading...</div>
+            ) : (
+              <div className="max-h-80 overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Product Name</TableHead>
+                      <TableHead>Stock</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {stockReport.length === 0 ? (
+                      <TableRow><TableCell colSpan={2}>No data</TableCell></TableRow>
+                    ) : stockReport.map((item) => (
+                      <TableRow key={item.product_name}>
+                        <TableCell>{item.product_name}</TableCell>
+                        <TableCell>{item.stock}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingProduct ? 'Edit Product' : 'Add New Product'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="name">Product Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="Enter product name"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                value={formData.quantity}
+                onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                placeholder="Enter quantity"
+                min="0"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button type="button" variant="outline" onClick={handleDialogClose}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingProduct ? 'Update' : 'Create'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </Card>
   );
-};
+}

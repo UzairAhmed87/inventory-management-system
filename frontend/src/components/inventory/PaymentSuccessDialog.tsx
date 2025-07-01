@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { CheckCircle, Download, X } from 'lucide-react';
 import { ExportUtils } from '@/utils/exportUtils';
 import { CompletedPayment } from '@/types';
+import { useAuthStore } from '@/store/authStore';
 
 interface PaymentSuccessDialogProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
   const [chequeBank, setChequeBank] = useState('');
   const [givenBy, setGivenBy] = useState('');
   const [receivedBy, setReceivedBy] = useState('');
+
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
 
   if (!isOpen || !payment) return null;
 
@@ -83,7 +86,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
         <body>
           <div class="invoice-container">
             <div class="header">
-              <div class="company-name">Company Name</div>
+              <div class="company-name">${companyName}</div>
               <div class="invoice-title">PAYMENT RECEIPT</div>
             </div>
             <table class="meta-table">
@@ -166,7 +169,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
           'New Balance': newBalance,
         },
       ];
-      ExportUtils.exportToExcel(data, 'Payment_Receipt');
+      ExportUtils.exportToExcel(data, 'Payment_Receipt', companyName);
     }
   };
 

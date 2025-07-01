@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -6,26 +6,27 @@ import { Label } from '@/components/ui/label';
 import { Plus } from 'lucide-react';
 import { ExportUtils } from '@/utils/exportUtils';
 import { useInventoryStore } from '@/store/inventoryStore';
+import { useAuthStore } from '@/store/authStore';
 
-interface ExpensesSectionProps {
-  expenses: { amount: number; desc: string; date: string }[];
-  setExpenses: React.Dispatch<React.SetStateAction<{ amount: number; desc: string; date: string }[]>>;
-  cashInHandBeforeExpenses?: number;
-}
-
-export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setExpenses, cashInHandBeforeExpenses }) => {
+export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = ({ cashInHandBeforeExpenses }) => {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseError, setExpenseError] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const { balancePayments } = useInventoryStore();
+  const { balancePayments, expenses, fetchExpenses, addExpense } = useInventoryStore();
   const [showGeneralLedger, setShowGeneralLedger] = useState(false);
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
 
-  const handleAddExpense = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchExpenses();
+  }, [fetchExpenses]);
+
+  const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseAmount || !expenseDesc) {
+    const trimmedDesc = expenseDesc.trim();
+    if (!expenseAmount || !trimmedDesc) {
       setExpenseError('Both fields are required');
       return;
     }
@@ -34,14 +35,15 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
       setExpenseError('Amount must be a positive number');
       return;
     }
-    setExpenses([
-      ...expenses,
-      { amount, desc: expenseDesc, date: new Date().toISOString().slice(0, 10) },
-    ]);
-    setExpenseAmount('');
-    setExpenseDesc('');
-    setExpenseError('');
-    setShowExpenseModal(false);
+    try {
+      await addExpense({ amount, description: trimmedDesc, date: new Date().toISOString().slice(0, 10) });
+      setExpenseAmount('');
+      setExpenseDesc('');
+      setExpenseError('');
+      setShowExpenseModal(false);
+    } catch (err) {
+      setExpenseError('Failed to add expense');
+    }
   };
 
   // Filter expenses by date range
@@ -59,7 +61,7 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
   const ledgerEntries = [
     ...filteredExpenses.map(e => ({
       date: e.date,
-      description: e.desc,
+      description: e.description,
       debit: 0,
       credit: e.amount,
       type: 'expense',
@@ -131,7 +133,8 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
         Credit: e.credit > 0 ? e.credit.toFixed(2) : '',
         Balance: e.balance.toFixed(2),
       })),
-      'General_Ledger'
+      'General_Ledger',
+      companyName
     );
   };
 
@@ -150,7 +153,8 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
         previousCashInHand,
         netChange,
         currentCashInHand,
-      }
+      },
+      companyName
     );
   };
 
@@ -159,8 +163,8 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
 
   const handleExportPDF = () => {
     const dataRows = filteredExpenses.map(e => ({
-      Date: e.date,
-      Description: e.desc,
+      Date: e.date ? e.date.slice(0, 10) : '',
+      Description: e.description,
       Amount: e.amount.toFixed(2),
     }));
     // Add summary row (only total expenses, no cash in hand)
@@ -172,7 +176,7 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
       {
         title: 'Expenses History',
         dateRange: fromDate || toDate ? `${fromDate || '...'} to ${toDate || '...'}` : undefined,
-        companyName: 'Company Name',
+        companyName,
         fileName: 'Expenses_History',
       }
     );
@@ -219,8 +223,8 @@ export const ExpensesSection: React.FC<ExpensesSectionProps> = ({ expenses, setE
             ) : (
               filteredExpenses.map((e, idx) => (
                 <tr key={idx}>
-                  <td className="border px-2 py-1">{e.date}</td>
-                  <td className="border px-2 py-1">{e.desc}</td>
+                  <td className="border px-2 py-1">{e.date ? e.date.slice(0, 10) : ''}</td>
+                  <td className="border px-2 py-1">{e.description}</td>
                   <td className="border px-2 py-1">{e.amount.toFixed(2)}</td>
                 </tr>
               ))

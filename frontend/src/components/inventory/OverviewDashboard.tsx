@@ -7,13 +7,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { apiService, DashboardSummary } from '@/services/api';
 
-export const OverviewDashboard = ({ expenses, setExpenses }) => {
+export const OverviewDashboard = ({ cashInHand }: { cashInHand: number }) => {
   const { products, customers, vendors, transactions, fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, balancePayments, fetchBalancePayments } = useInventoryStore();
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseError, setExpenseError] = useState('');
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchProducts();
@@ -22,6 +26,19 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
     fetchTransactions();
     fetchBalancePayments();
   }, [fetchProducts, fetchCustomers, fetchVendors, fetchTransactions, fetchBalancePayments]);
+
+  useEffect(() => {
+    setLoading(true);
+    apiService.getDashboardSummary()
+      .then(data => {
+        setSummary(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        setError('Failed to load dashboard summary');
+        setLoading(false);
+      });
+  }, []);
 
   // Calculate current month transactions
   const currentMonth = new Date().getMonth();
@@ -101,13 +118,15 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 5);
 
-  // Calculate total expenses
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-
-  // Calculate cash in hand: sum of all customer payments - sum of all vendor payments - expenses
-  const totalCustomerPayments = balancePayments.filter(p => p.type === 'customer_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
-  const totalVendorPayments = balancePayments.filter(p => p.type === 'vendor_payment').reduce((sum, p) => sum + (p.amount || 0), 0);
-  const cashInHand = totalCustomerPayments - totalVendorPayments - totalExpenses;
+  if (loading) {
+    return <div>Loading dashboard...</div>;
+  }
+  if (error) {
+    return <div className="text-red-600">{error}</div>;
+  }
+  if (!summary) {
+    return <div>No dashboard data available.</div>;
+  }
 
   return (
     <div className="space-y-6">
@@ -119,9 +138,9 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
             <Package className="h-4 w-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalProducts}</div>
+            <div className="text-2xl font-bold">{summary.total_products}</div>
             <p className="text-xs opacity-80">
-              {stats.lowStockProducts} low stock • {stats.outOfStockProducts} out of stock
+              {summary.low_stock_count} out of stock
             </p>
           </CardContent>
         </Card>
@@ -130,7 +149,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
         <SensitiveCard
           label="Monthly Sales"
           value={<>
-            PKR {stats.currentMonthSales.toFixed(2)}
+            PKR {Number(summary.current_month_sales).toFixed(2)}
             <div className="text-xs opacity-80 flex items-center mt-1">
               {salesGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -148,7 +167,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
         <SensitiveCard
           label="Monthly Purchases"
           value={<>
-            PKR {stats.currentMonthPurchases.toFixed(2)}
+            PKR {Number(summary.current_month_purchases).toFixed(2)}
             <div className="text-xs opacity-80 flex items-center mt-1">
               {purchaseGrowth >= 0 ? (
                 <TrendingUp className="h-3 w-3 mr-1" />
@@ -166,7 +185,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
         <SensitiveCard
           label="Cash in Hand"
           value={<>
-            PKR {cashInHand.toFixed(2)}
+            PKR {Number(cashInHand).toFixed(2)}
             <div className="text-xs opacity-80 mt-1">Total after expenses</div>
           </>}
           icon={<DollarSign className="h-4 w-4" />}
@@ -180,7 +199,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
         <SensitiveCard
           label="Customer Outstanding"
           value={<>
-            PKR {stats.totalCustomerBalance.toFixed(2)}
+            PKR {Number(stats.totalCustomerBalance || 0).toFixed(2)}
             <div className="text-xs opacity-80 mt-1">Amount customers owe us</div>
           </>}
           icon={<Users className="h-4 w-4" />}
@@ -191,7 +210,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
         <SensitiveCard
           label="Vendor Outstanding"
           value={<>
-            PKR {stats.totalVendorBalance.toFixed(2)}
+            PKR {Number(stats.totalVendorBalance || 0).toFixed(2)}
             <div className="text-xs opacity-80 mt-1">Amount we owe vendors</div>
           </>}
           icon={<Truck className="h-4 w-4" />}
@@ -275,6 +294,7 @@ export const OverviewDashboard = ({ expenses, setExpenses }) => {
     </div>
   );
 };
+
 function getMonthlySummary(transactions: any[]) {
   // Group transactions by month and year
   const summary: Record<string, { sales: number; purchases: number }> = {};

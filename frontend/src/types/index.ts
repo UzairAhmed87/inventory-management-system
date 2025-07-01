@@ -7,6 +7,8 @@ export interface CompletedPayment {
   date: string;
   notes: string;
   invoiceNumber: string;
+  previousBalance?: number;
+  newBalance?: number;
 }
 
 export interface CompletedBatchTransaction extends Transaction {
@@ -25,8 +27,8 @@ export interface LedgerEntry {
 export interface BalancePayment {
   id: string;
   type: 'customer_payment' | 'vendor_payment';
-  customerId?: string;
-  vendorId?: string;
+  customer_name?: string;
+  vendor_name?: string;
   amount: number;
   date: string | null;
   notes?: string;
