@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Lock, User, AlertCircle } from 'lucide-react';
 import { toast } from '../ui/use-toast';
 import { login as apiLogin } from '@/services/api';
+import './LoginForm.css';
 
 interface LoginFormProps {
   onLogin: (token: string, login_id: string, companyName: string) => void;
@@ -45,21 +46,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-indigo-200 to-pink-200 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        <Card className="shadow-lg border-0">
+        <Card className="login-animate glass-card shadow-2xl border-0 backdrop-blur-md">
+          <style>{`.glass-card { box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 0 32px 4px rgba(59,130,246,0.12); padding: 2.5rem 2rem; }`}</style>
           <CardHeader className="space-y-1 text-center pb-4">
-            <img src="/bigLogo.svg" alt="UA Trackistory Logo" className="mx-auto h-20 w-auto mb-4" />
-            <div className="mx-auto w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mb-4">
-              <Lock className="h-6 w-6 text-blue-600" />
+            <img src="/bigLogo.svg" alt="UA Trackistory Logo" className="mx-auto h-20 w-auto mb-4 drop-shadow-lg" />
+            <div className="mx-auto w-14 h-14 bg-gradient-to-br from-blue-200 to-indigo-400 rounded-full flex items-center justify-center mb-4 shadow-md">
+              <Lock className="h-7 w-7 text-blue-700" />
             </div>
-            <CardTitle className="text-2xl font-semibold">Sign In</CardTitle>
-            <p className="text-sm text-gray-600">Enter your credentials to continue</p>
+            <CardTitle className="text-3xl font-bold tracking-tight text-gray-800 drop-shadow-sm">Sign In</CardTitle>
+            <p className="text-base text-gray-600">Enter your credentials to continue</p>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="userId">User ID</Label>
+                <Label htmlFor="userId" className="text-gray-700 font-semibold">User ID</Label>
                 <div className="relative">
                   <User className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                   <Input
@@ -68,14 +70,14 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
                     placeholder="Enter your user ID"
                     value={formData.userId}
                     onChange={(e) => setFormData(prev => ({ ...prev, userId: e.target.value }))}
-                    className="pl-10"
+                    className="pl-10 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-200 hover:border-blue-300 focus:shadow-lg focus:shadow-blue-100"
                     required
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password" className="text-gray-700 font-semibold">Password</Label>
                 <div className="relative">
                   <Lock className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
                   <Input
@@ -84,22 +86,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
                     placeholder="Enter your password"
                     value={formData.password}
                     onChange={(e) => setFormData(prev => ({ ...prev, password: e.target.value }))}
-                    className="pl-10"
+                    className="pl-10 focus:ring-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-200 hover:border-blue-300 focus:shadow-lg focus:shadow-blue-100"
                     required
                   />
                 </div>
               </div>
 
               {error && (
-                <div className="flex items-center space-x-2 text-red-600 text-sm bg-red-50 p-3 rounded-md">
+                <div className="flex items-center space-x-2 text-red-600 text-sm bg-red-50 p-3 rounded-md shadow">
                   <AlertCircle className="h-4 w-4" />
                   <span>{error}</span>
                 </div>
               )}
 
               <Button 
-                type="submit" 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5"
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 shadow-lg transition-all duration-200 rounded-lg"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -113,7 +115,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-gray-500">
+            <div className="mt-8 text-center text-sm text-gray-500">
               <p>Access is restricted to registered users only.</p>
               <p className="mt-1">Contact your administrator for account registration.</p>
             </div>

@@ -2,6 +2,20 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { setAuthToken } from '@/services/api';
 
+// Custom sessionStorage for zustand persist
+const sessionStoragePersist = {
+  getItem: (name: string) => {
+    const value = sessionStorage.getItem(name);
+    return value ? value : null;
+  },
+  setItem: (name: string, value: string) => {
+    sessionStorage.setItem(name, value);
+  },
+  removeItem: (name: string) => {
+    sessionStorage.removeItem(name);
+  },
+};
+
 interface AuthState {
   isAuthenticated: boolean;
   token: string | null;
@@ -29,6 +43,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'auth-storage',
+      storage: sessionStoragePersist, // Use sessionStorage instead of localStorage
       onRehydrateStorage: () => (state) => {
         if (state?.token) setAuthToken(state.token);
       }

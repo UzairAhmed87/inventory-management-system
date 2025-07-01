@@ -73,12 +73,14 @@ async function initializeCompanyTables(dbUrl) {
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL UNIQUE,
       phone VARCHAR(50) UNIQUE,
+      balance NUMERIC (10, 2) DEFAULT 0.00,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS vendors (
       id SERIAL PRIMARY KEY,
       name VARCHAR(255) NOT NULL UNIQUE,
       phone VARCHAR(50) UNIQUE,
+      balance NUMERIC (10, 2) DEFAULT 0.00,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
     CREATE TABLE IF NOT EXISTS transactions (
