@@ -34,7 +34,7 @@ const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
 //   credentials: true
 // }));
 app.use(cors({
-    origin: 'https://trackistory.vercel.app',
+    origin: frontendUrl,
     credentials: true 
   }));
 app.use(express.json());

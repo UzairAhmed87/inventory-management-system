@@ -18,7 +18,7 @@ interface BalanceManagerProps {
 }
 
 export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
-  const { customers, vendors, balancePayments, addBalancePayment, fetchCustomers, fetchVendors, fetchBalancePayments } = useInventoryStore();
+  const { customers, vendors, balancePayments, addBalancePayment, fetchCustomers, fetchVendors, fetchBalancePayments, setGlobalLoader } = useInventoryStore();
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [selectedId, setSelectedId] = useState('');
   const [paymentData, setPaymentData] = useState({
@@ -72,37 +72,48 @@ export const BalanceManager: React.FC<BalanceManagerProps> = ({ type }) => {
       return;
     }
 
-    const newPayment = await addBalancePayment({
-      type: type === 'customer' ? 'customer_payment' : 'vendor_payment',
-      customer_name: type === 'customer' ? selectedId : undefined,
-      vendor_name: type === 'vendor' ? selectedId : undefined,
-      amount,
-      date: new Date().toISOString(),
-      notes: paymentData.notes
-      // invoiceNumber: ''
-    });
+    setGlobalLoader(true);
+    try {
+      const newPayment = await addBalancePayment({
+        type: type === 'customer' ? 'customer_payment' : 'vendor_payment',
+        customer_name: type === 'customer' ? selectedId : undefined,
+        vendor_name: type === 'vendor' ? selectedId : undefined,
+        amount,
+        date: new Date().toISOString(),
+        notes: paymentData.notes
+        // invoiceNumber: ''
+      });
 
-    const entityForDialog = entities.find(e => e.name === selectedId);
-    await fetchBalancePayments();
+      const entityForDialog = entities.find(e => e.name === selectedId);
+      await fetchBalancePayments();
 
-    setCompletedPayment({
-      type,
-      entity: entityForDialog,
-      amount,
-      date: newPayment.date,
-      notes: paymentData.notes,
-      invoiceNumber: newPayment.invoiceNumber,
-    });
-    setShowSuccessDialog(true);
+      setCompletedPayment({
+        type,
+        entity: entityForDialog,
+        amount,
+        date: newPayment.date,
+        notes: paymentData.notes,
+        invoiceNumber: newPayment.invoiceNumber,
+      });
+      setShowSuccessDialog(true);
 
-    toast({
-      title: "Success",
-      description: `Payment of PKR ${amount.toFixed(2)} recorded successfully`,
-    });
+      toast({
+        title: "Success",
+        description: `Payment of PKR ${amount.toFixed(2)} recorded successfully`,
+      });
 
-    setPaymentData({ amount: '', notes: '' });
-    setSelectedId('');
-    setShowPaymentForm(false);
+      setPaymentData({ amount: '', notes: '' });
+      setSelectedId('');
+      setShowPaymentForm(false);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to record payment. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setGlobalLoader(false);
+    }
   };
 
   const openPaymentForm = (entityId: string) => {

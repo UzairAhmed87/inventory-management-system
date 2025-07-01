@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -50,6 +50,20 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [completedTransaction, setCompletedTransaction] = useState<CompletedBatchTransaction | null>(null);
   const [pendingSubmit, setPendingSubmit] = useState(false);
+  const inputRefs = useRef<Array<Array<React.RefObject<HTMLInputElement>>>>([]);
+  const customerVendorBtnRef = useRef<HTMLButtonElement>(null);
+  const productBtnRefs = useRef<Array<React.RefObject<HTMLButtonElement>>>([]);
+
+  // Always initialize refs before rendering rows
+  if (inputRefs.current.length !== items.length) {
+    inputRefs.current = items.map((_, rowIdx) => [
+      inputRefs.current[rowIdx]?.[0] || React.createRef<HTMLInputElement>(),
+      inputRefs.current[rowIdx]?.[1] || React.createRef<HTMLInputElement>(),
+    ]);
+  }
+  if (productBtnRefs.current.length !== items.length) {
+    productBtnRefs.current = items.map((_, rowIdx) => productBtnRefs.current[rowIdx] || React.createRef<HTMLButtonElement>());
+  }
 
   // Add a new empty item row
   const addItem = () => {
@@ -204,6 +218,80 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
     // eslint-disable-next-line
   }, [fetchProducts, fetchCustomers, fetchVendors, isEditMode, transaction]);
 
+  // Focus customer/vendor selector on mount
+  useEffect(() => {
+    setTimeout(() => {
+      customerVendorBtnRef.current?.focus();
+    }, 100);
+  }, []);
+
+  // Keyboard handler for customer/vendor selector
+  const handleCustomerVendorKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (type === 'sale' || (type === 'return' && returnPartyType === 'customer')) setOpenCustomer(true);
+      else setOpenVendor(true);
+    } else if (e.key === 'Tab' || e.key === 'ArrowDown') {
+      // Down arrow or Tab after selection moves to product selector
+      if ((type === 'sale' && customerId) || (type === 'purchase' && vendorId) || (type === 'return' && ((returnPartyType === 'customer' && customerId) || (returnPartyType === 'vendor' && vendorId)))) {
+        e.preventDefault();
+        productBtnRefs.current[0]?.current?.focus();
+      }
+    }
+  };
+
+  // Keyboard handler for product selector
+  const handleProductBtnKeyDown = (rowIdx: number) => (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'Enter' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      // Open product popover for this row
+      setOpenProductRow(rowIdx);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      inputRefs.current[rowIdx]?.[0]?.current?.focus();
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (productBtnRefs.current[rowIdx + 1]) productBtnRefs.current[rowIdx + 1].current?.focus();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (rowIdx > 0 && productBtnRefs.current[rowIdx - 1]) productBtnRefs.current[rowIdx - 1].current?.focus();
+    }
+  };
+
+  // Track which product popover is open
+  const [openProductRow, setOpenProductRow] = useState<number | null>(null);
+
+  // Keyboard navigation handler
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (inputRefs.current[row + 1]?.[col]) {
+        inputRefs.current[row + 1][col].current?.focus();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (inputRefs.current[row - 1]?.[col]) {
+        inputRefs.current[row - 1][col].current?.focus();
+      }
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      if (col > 0 && inputRefs.current[row][col - 1]) {
+        inputRefs.current[row][col - 1].current?.focus();
+      }
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      if (col < inputRefs.current[row].length - 1 && inputRefs.current[row][col + 1]) {
+        inputRefs.current[row][col + 1].current?.focus();
+      }
+    } else if (e.key === 'Enter') {
+      // Only submit if not inside a popover/dropdown
+      // (You may want to add more checks if you have async dropdowns)
+      e.preventDefault();
+      (document.activeElement as HTMLElement)?.blur();
+      handleSubmit(new Event('submit') as any);
+    }
+  };
+
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -266,10 +354,12 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                     >
                       <PopoverTrigger asChild>
                         <Button
+                          ref={customerVendorBtnRef}
                           variant="outline"
                           role="combobox"
                           aria-expanded={type === 'sale' ? openCustomer : type === 'purchase' ? openVendor : returnPartyType === 'customer' ? openCustomer : openVendor}
                           className="w-full justify-between mt-1 h-10"
+                          onKeyDown={handleCustomerVendorKeyDown}
                         >
                           {(type === 'sale' ? customerId : type === 'purchase' ? vendorId : returnPartyType === 'customer' ? customerId : vendorId) ? (
                             <span>
@@ -315,7 +405,10 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                                     )}
                                   />
                                   <div>
-                                    <p className="font-medium">{item.name} ({item.uniqueId})</p>
+                                    <p className="font-medium">
+                                      {item.name}
+                                      {item.uniqueId ? ` (${item.uniqueId})` : ''}
+                                    </p>
                                     <p className="text-sm text-gray-500">{item.phoneNo}</p>
                                     {item.balance > 0 && (
                                       <p className="text-sm text-orange-600">
@@ -366,6 +459,13 @@ export const BatchTransactionForm: React.FC<BatchTransactionFormProps> = ({ type
                           onUpdate={updateItem}
                           onRemove={removeItem}
                           canRemove={items.length > 1}
+                          rowIndex={index}
+                          inputRefs={inputRefs.current}
+                          onInputKeyDown={handleInputKeyDown}
+                          productBtnRef={productBtnRefs.current[index]}
+                          productBtnKeyDown={handleProductBtnKeyDown(index)}
+                          openProduct={openProductRow === index}
+                          setOpenProduct={open => setOpenProductRow(open ? index : null)}
                         />
                       ))}
                     </tbody>
@@ -425,12 +525,19 @@ interface TransactionItemRowProps {
   onUpdate: (id: string, field: keyof TransactionItem, value: string | number) => void;
   onRemove: (id: string) => void;
   canRemove: boolean;
+  rowIndex: number;
+  inputRefs: React.RefObject<HTMLInputElement>[][];
+  onInputKeyDown: (e: React.KeyboardEvent<HTMLInputElement>, row: number, col: number) => void;
+  productBtnRef: React.RefObject<HTMLButtonElement>;
+  productBtnKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => void;
+  openProduct: boolean;
+  setOpenProduct: (open: boolean) => void;
 }
 
 const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
-  item, products, type, onUpdate, onRemove, canRemove
+  item, products, type, onUpdate, onRemove, canRemove, rowIndex, inputRefs, onInputKeyDown, productBtnRef, productBtnKeyDown, openProduct, setOpenProduct
 }) => {
-  const [openProduct, setOpenProduct] = useState(false);
+  const [openProductRow, setOpenProductRow] = useState<number | null>(null);
 
   return (
     <tr className="border-b hover:bg-gray-50 transition-colors">
@@ -438,11 +545,14 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
         <Popover open={openProduct} onOpenChange={setOpenProduct}>
           <PopoverTrigger asChild>
             <Button
+              ref={productBtnRef}
               variant="outline"
               role="combobox"
               aria-expanded={openProduct}
               className="w-full justify-between h-10"
               size="sm"
+              tabIndex={0}
+              onKeyDown={productBtnKeyDown}
             >
               {item.productName ? (
                 <span className="truncate">{item.productName}</span>
@@ -492,17 +602,21 @@ const TransactionItemRow: React.FC<TransactionItemRowProps> = ({
           step="0.01"
           value={item.quantity.toString()}
           onChange={(e) => onUpdate(item.id, 'quantity', Number(e.target.value))}
-           className="w-20"
+          className="w-20"
+          ref={inputRefs[rowIndex][0]}
+          onKeyDown={e => onInputKeyDown(e, rowIndex, 0)}
         />
       </td>
       <td className="px-6 py-4">
         <Input
           type="number"
-          step="0.01"
+          step="1"
           min="0"
           value={item.price.toString()}
           onChange={(e) => onUpdate(item.id, 'price', Number(e.target.value))}
           className="w-24"
+          ref={inputRefs[rowIndex][1]}
+          onKeyDown={e => onInputKeyDown(e, rowIndex, 1)}
         />
       </td>
       <td className="px-6 py-4">

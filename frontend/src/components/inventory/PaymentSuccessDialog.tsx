@@ -57,6 +57,10 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
       newBalance = String(payment.entity.balance - payment.amount);
     }
 
+    const safeName = (payment.entity?.name || 'Unknown').replace(/\s+/g, '');
+    const invoiceNo = payment.invoiceNumber || 'INV';
+    const fileBase = `${safeName}-${invoiceNo}`;
+
     if (format === 'pdf') {
       const billHTML = `
         <!DOCTYPE html>
@@ -151,6 +155,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
         printWindow.document.close();
         printWindow.focus();
         setTimeout(() => {
+          printWindow.document.title = fileBase + '.pdf';
           printWindow.print();
         }, 250);
       }
@@ -169,7 +174,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({ isOp
           'New Balance': newBalance,
         },
       ];
-      ExportUtils.exportToExcel(data, 'Payment_Receipt', companyName);
+      ExportUtils.exportToExcel(data, fileBase, companyName);
     }
   };
 

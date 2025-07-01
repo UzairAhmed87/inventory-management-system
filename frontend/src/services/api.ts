@@ -238,6 +238,13 @@ class ApiService {
     });
   }
 
+  async updateTransaction(id: string, transaction: any): Promise<any> {
+    return this.request(`/transactions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(transaction),
+    });
+  }
+
   // Dashboard API
   async getDashboardSummary(): Promise<DashboardSummary> {
     return this.request<DashboardSummary>('/transactions/summary/dashboard');

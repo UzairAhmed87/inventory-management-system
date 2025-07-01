@@ -155,6 +155,10 @@ export class ExportUtils {
       client = vendor || (transaction.vendor_name ? { id: '', uniqueId: '', name: transaction.vendor_name, phoneNo: '', balance: 0, createdAt: null } : null);
       clientType = 'Vendor';
     }
+    // --- Set filename as name-invoiceNo ---
+    const safeName = (client?.name || 'Unknown').replace(/\s+/g, '');
+    const invoiceNo = transaction.invoiceNumber || 'INV';
+    const fileBase = `${safeName}-${invoiceNo}`;
     if (format === 'pdf') {
       const billHTML = `
         <!DOCTYPE html>
@@ -257,6 +261,7 @@ export class ExportUtils {
         printWindow.document.close();
         printWindow.focus();
         setTimeout(() => {
+          printWindow.document.title = fileBase + '.pdf';
           printWindow.print();
         }, 250);
       }
@@ -279,7 +284,7 @@ export class ExportUtils {
         { Field: 'New Balance', Value: `${Number(transaction.newBalance || 0).toFixed(2)}` },
       ];
       
-      ExportUtils.exportToExcel(data, `Invoice_${transaction.invoiceNumber}`);
+      ExportUtils.exportToExcel(data, fileBase);
     }
   }
 

@@ -25,8 +25,8 @@ function mapApiTransactionToCompletedBatchTransaction(t: any): CompletedBatchTra
     items: (t.items ?? []).map((item: any) => ({
       productName: item.product_name ?? item.productName ?? '',
       quantity: item.quantity ?? 0,
-      price: item.price ?? 0,
-      totalPrice: item.total_price ?? item.totalPrice ?? 0,
+      price: item.price ?? item.unit_price ?? 0,
+      totalPrice: item.totalPrice ?? item.total_price ?? 0,
     })),
     totalAmount: Number(t.total_amount ?? t.totalAmount ?? 0),
     previousBalance: Number(t.previous_balance ?? t.previousBalance ?? 0),

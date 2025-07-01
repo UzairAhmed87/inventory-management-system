@@ -8,6 +8,9 @@ import { useInventoryStore, Transaction } from '@/store/inventoryStore';
 import { ExportUtils } from '@/utils/exportUtils';
 import { BatchTransactionForm } from './BatchTransactionForm';
 import { TransactionForm } from './TransactionForm';
+import { useAuthStore } from '@/store/authStore';
+import { apiService } from '@/services/api';
+import { mapApiTransactionToStore } from '@/store/inventoryStore';
 
 type TransactionFilterType = 'all' | 'sale' | 'purchase';
 
@@ -40,6 +43,8 @@ export const TransactionHistory = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
+  const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
+
   useEffect(() => {
     fetchTransactions();
     fetchCustomers();
@@ -56,8 +61,8 @@ export const TransactionHistory = () => {
         t.items.some(item => 
           item && item.productName && item.productName.toLowerCase().includes(lowerSearch)
         ) ||
-        (t.customerId && customers.find(c => c.id === t.customerId)?.name.toLowerCase().includes(lowerSearch)) ||
-        (t.vendorId && vendors.find(v => v.id === t.vendorId)?.name.toLowerCase().includes(lowerSearch));
+        (t.customer_name && customers.find(c => c.name === t.customer_name)?.name.toLowerCase().includes(lowerSearch)) ||
+        (t.vendor_name && vendors.find(v => v.name === t.vendor_name)?.name.toLowerCase().includes(lowerSearch));
       
       const matchesType = filterType === 'all' || t.type === filterType;
       
@@ -85,8 +90,8 @@ export const TransactionHistory = () => {
     filteredTransactions.forEach(t => {
       if (!t || !t.items) return;
       
-      const customer = t.customerId ? customers.find(c => c.id === t.customerId) : null;
-      const vendor = t.vendorId ? vendors.find(v => v.id === t.vendorId) : null;
+      const customer = t.customer_name ? customers.find(c => c.name === t.customer_name) : null;
+      const vendor = t.vendor_name ? vendors.find(v => v.name === t.vendor_name) : null;
       
       t.items.forEach(item => {
         if (!item) return;
@@ -125,11 +130,31 @@ export const TransactionHistory = () => {
       .reduce((sum, t) => sum + (t.totalAmount || 0), 0);
   };
 
-  const handleDownloadBill = (transaction: Transaction) => {
-    const customer = transaction.customerId ? customers.find(c => c.id === transaction.customerId) : null;
-    const vendor = transaction.vendorId ? vendors.find(v => v.id === transaction.vendorId) : null;
-    
-    ExportUtils.exportTransactionBill(transaction, customer, vendor, 'pdf');
+  const handleDownloadBill = async (transaction: Transaction) => {
+    const customer = transaction.customer_name ? customers.find(c => c.name === transaction.customer_name) : null;
+    const vendor = transaction.vendor_name ? vendors.find(v => v.name === transaction.vendor_name) : null;
+
+    // Always fetch the full transaction from backend by invoice number
+    let fullTransaction = transaction;
+    try {
+      const apiTxn = await apiService.getTransactionByInvoiceNumber(transaction.invoiceNumber);
+      fullTransaction = mapApiTransactionToStore(apiTxn);
+    } catch (e) {
+      // fallback to passed transaction if fetch fails
+    }
+    ExportUtils.exportTransactionBill(fullTransaction, customer, vendor, 'pdf', companyName);
+  };
+
+  const handleEditTransaction = async (transaction: Transaction) => {
+    let fullTransaction = transaction;
+    try {
+      const apiTxn = await apiService.getTransactionByInvoiceNumber(transaction.invoiceNumber);
+      fullTransaction = mapApiTransactionToStore(apiTxn);
+    } catch (e) {
+      // fallback to passed transaction if fetch fails
+    }
+    setEditingTransaction(fullTransaction);
+    setShowEditForm(true);
   };
 
   return (
@@ -269,8 +294,8 @@ export const TransactionHistory = () => {
                 {filteredTransactions.map((transaction) => {
                   if (!transaction) return null;
                   
-                  const customer = transaction.customerId ? customers.find(c => c.id === transaction.customerId) : null;
-                  const vendor = transaction.vendorId ? vendors.find(v => v.id === transaction.vendorId) : null;
+                  const customer = transaction.customer_name ? customers.find(c => c.name === transaction.customer_name) : null;
+                  const vendor = transaction.vendor_name ? vendors.find(v => v.name === transaction.vendor_name) : null;
                   
                   return (
                     <tr key={transaction.id} className="border-b hover:bg-gray-50 transition-colors">
@@ -294,7 +319,6 @@ export const TransactionHistory = () => {
                       <td className="p-4">
                         <div>
                           <p className="font-medium">{customer?.name || vendor?.name || 'N/A'}</p>
-                          <p className="text-sm text-gray-500">{customer?.uniqueId || vendor?.uniqueId || 'N/A'}</p>
                         </div>
                       </td>
                       <td className="p-4">
@@ -322,10 +346,7 @@ export const TransactionHistory = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setEditingTransaction(transaction);
-                            setShowEditForm(true);
-                          }}
+                          onClick={() => handleEditTransaction(transaction)}
                           className="ml-2 bg-yellow-50 hover:bg-yellow-100 text-yellow-700 border-yellow-200"
                         >
                           Edit
@@ -354,7 +375,6 @@ export const TransactionHistory = () => {
             setEditingTransaction(null);
           }}
           transaction={editingTransaction}
-          isEditMode={true}
         />
       )}
       {showReturnForm && (

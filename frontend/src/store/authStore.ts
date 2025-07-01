@@ -6,10 +6,10 @@ import { setAuthToken } from '@/services/api';
 const sessionStoragePersist = {
   getItem: (name: string) => {
     const value = sessionStorage.getItem(name);
-    return value ? value : null;
+    return value ? JSON.parse(value) : null;
   },
-  setItem: (name: string, value: string) => {
-    sessionStorage.setItem(name, value);
+  setItem: (name: string, value: any) => {
+    sessionStorage.setItem(name, JSON.stringify(value));
   },
   removeItem: (name: string) => {
     sessionStorage.removeItem(name);

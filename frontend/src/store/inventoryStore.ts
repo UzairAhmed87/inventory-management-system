@@ -160,7 +160,7 @@ function mapStoreVendorToApi(v: Partial<Vendor>): any {
     phone: v.phoneNo,
   };
 }
-function mapApiTransactionToStore(t: any): Transaction {
+export function mapApiTransactionToStore(t: any): Transaction {
   return {
     id: String(t.id),
     invoiceNumber: t.invoice_number ?? t.invoiceNumber ?? '',
@@ -170,8 +170,8 @@ function mapApiTransactionToStore(t: any): Transaction {
     items: (t.items ?? []).map((item: any) => ({
       productName: item.product_name ?? item.productName ?? '',
       quantity: item.quantity ?? 0,
-      price: item.price ?? 0,
-      totalPrice: item.total_price ?? item.totalPrice ?? 0,
+      price: item.price ?? item.unit_price ?? 0,
+      totalPrice: item.totalPrice ?? item.total_price ?? 0,
     })),
     totalAmount: Number(t.total_amount ?? t.totalAmount ?? 0),
     previousBalance: Number(t.previous_balance ?? t.previousBalance ?? 0),
@@ -332,7 +332,7 @@ export const useInventoryStore = create<InventoryStore>()((set, get) => ({
    * Update an existing transaction (bill), reverting the old effects and applying the new ones.
    */
   updateTransaction: async (id, updatedTransaction) => {
-    // No update endpoint available; just refresh transactions
+    await apiService.updateTransaction(id, mapStoreTransactionToApi(updatedTransaction));
     await get().fetchTransactions();
   },
 

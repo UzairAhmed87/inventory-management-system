@@ -199,7 +199,7 @@ export const CustomerSection = () => {
     if (!paymentData.amount || parseFloat(paymentData.amount) <= 0 || !paymentData.notes) return;
     const amount = parseFloat(paymentData.amount);
     if (amount > customer.balance) return;
-
+    setGlobalLoader(true);
     try {
       // Call addBalancePayment without invoiceNumber to let inventoryStore generate it
       const newPayment = await addBalancePayment({
@@ -232,6 +232,8 @@ export const CustomerSection = () => {
     } catch (error) {
       console.error('Error recording payment:', error);
       toast("Failed to record payment. Please try again.");
+    } finally {
+      setGlobalLoader(false);
     }
   };
   

@@ -6,10 +6,10 @@ const { getDbPool } = require('../database');
 router.get('/', async (req, res) => {
   const pool = req.dbPool;
   try {
-    // Get all transactions with their items (product name and quantity)
+    // Get all transactions with their items (product name, quantity, price, total_price)
     const transactionsResult = await pool.query(`
       SELECT t.*, 
-        json_agg(json_build_object('product_name', ti.product_name, 'quantity', ti.quantity)) AS items
+        json_agg(json_build_object('product_name', ti.product_name, 'quantity', ti.quantity, 'price', ti.price, 'totalPrice', ti.total_price)) AS items
       FROM transactions t
       LEFT JOIN transaction_items ti ON ti.transaction_id = t.id
       GROUP BY t.id
@@ -562,6 +562,37 @@ router.get('/ledger/vendor/:name', async (req, res) => {
     });
     res.json(ledger);
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /:id - Update a transaction and its items
+router.put('/:id', async (req, res) => {
+  const pool = req.dbPool;
+  const { id } = req.params;
+  const { type, customer_name, vendor_name, items, total_amount, totalAmount } = req.body;
+  const totalAmountValue = total_amount ?? totalAmount ?? 0;
+  try {
+    await pool.query('BEGIN');
+    // Update transaction main fields
+    await pool.query(
+      `UPDATE transactions SET type = $1, customer_name = $2, vendor_name = $3, total_amount = $4 WHERE id = $5`,
+      [type, customer_name, vendor_name, totalAmountValue, id]
+    );
+    // Delete old items
+    await pool.query(`DELETE FROM transaction_items WHERE transaction_id = $1`, [id]);
+    // Insert new items
+    for (const item of items) {
+      await pool.query(
+        `INSERT INTO transaction_items (transaction_id, product_name, quantity, price, total_price)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [id, item.productName, item.quantity, item.price, item.totalPrice]
+      );
+    }
+    await pool.query('COMMIT');
+    res.json({ success: true });
+  } catch (error) {
+    await pool.query('ROLLBACK');
     res.status(500).json({ error: error.message });
   }
 });
