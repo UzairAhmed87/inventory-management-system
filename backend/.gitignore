@@ -1,5 +1,5 @@
 # Node modules
-node_modules/
+node_modules
 
 # Logs
 logs/
@@ -17,8 +17,6 @@ yarn-error.log*
 Thumbs.db
 
 # Dependency directories
-package-lock.json
-yarn.lock
 
 # Test output
 coverage/
