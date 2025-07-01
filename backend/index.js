@@ -12,27 +12,31 @@ const vendorsRouter = require('./routes/vendors');
 
 const app = express();
 const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
-const allowedOrigins = [
-  'http://localhost:8080', // React default
-  'http://localhost:5173', // Vite default
-  'http://127.0.0.1:5173', // Vite alternative
-  'http://127.0.0.1:8000', // React alternative
-];
-if (frontendUrl) {
-  allowedOrigins.push(frontendUrl); // Add frontend URL from .env if present
-}
+// const allowedOrigins = [
+//   'http://localhost:8080', // React default
+//   'http://localhost:5173', // Vite default
+//   'http://127.0.0.1:5173', // Vite alternative
+//   'http://127.0.0.1:8000', // React alternative
+// ];
+// if (frontendUrl) {
+//   allowedOrigins.push(frontendUrl); // Add frontend URL from .env if present
+// }
+// app.use(cors({
+//   origin: function (origin, callback) {
+//     // allow requests with no origin (like mobile apps, curl, etc.)
+//     if (!origin) return callback(null, true);
+//     if (allowedOrigins.indexOf(origin) !== -1) {
+//       return callback(null, true);
+//     } else {
+//       return callback(new Error('Not allowed by CORS'));
+//     }
+//   },
+//   credentials: true
+// }));
 app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
+    origin: 'https://trackistory.vercel.app',
+    credentials: true 
+  }));
 app.use(express.json());
 
 const JWT_SECRET = process.env.JWT_SECRET;
