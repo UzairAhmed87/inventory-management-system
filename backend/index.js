@@ -42,7 +42,7 @@ app.use(express.json());
 const JWT_SECRET = process.env.JWT_SECRET;
 
 // Auth endpoint
-app.post('/api/auth/login', async (req, res) => {
+app.post('/auth/login', async (req, res) => {
   const { login_id, password } = req.body;
   if (!login_id || !password) return res.status(400).json({ error: 'login_id and password required' });
   try {
@@ -63,7 +63,7 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Auth verify endpoint for sensitive unlock
-app.post('/api/auth/verify', async (req, res) => {
+app.post('/auth/verify', async (req, res) => {
   const { login_id, password } = req.body;
   if (!login_id || !password) return res.status(400).json({ valid: false, error: 'login_id and password required' });
   try {
@@ -109,10 +109,10 @@ async function ensureTablesMiddleware(req, res, next) {
 }
 
 // Protected API routes
-app.use('/api/products', requireAuth, ensureTablesMiddleware, productsRouter);
-app.use('/api/transactions', requireAuth, ensureTablesMiddleware, transactionsRouter);
-app.use('/api/customers', requireAuth, ensureTablesMiddleware, customersRouter);
-app.use('/api/vendors', requireAuth, ensureTablesMiddleware, vendorsRouter);
+app.use('/products', requireAuth, ensureTablesMiddleware, productsRouter);
+app.use('/transactions', requireAuth, ensureTablesMiddleware, transactionsRouter);
+app.use('/customers', requireAuth, ensureTablesMiddleware, customersRouter);
+app.use('/vendors', requireAuth, ensureTablesMiddleware, vendorsRouter);
 
 app.get('/', (req, res) => {
   res.json({
