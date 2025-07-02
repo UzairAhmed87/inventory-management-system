@@ -141,9 +141,12 @@ const Dashboard = () => {
         <div className="max-w-7xl my-3 mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
-              <img src="/logo.svg" alt="UA Trackistory Logo" className="h-12 w-auto object-contain" />
-              <div>
-                {/* Only show the logo, remove slogan text */}
+              <img src="/logo.png" alt="UA Trackistory Logo" className="h-20  object-contain" />
+              <div className="flex flex-col items-start justify-center">
+                <span className="text-3xl font-extrabold tracking-wide bg-gradient-to-r from-slate-700 to-blue-700 bg-clip-text text-transparent drop-shadow-sm">
+                  Trackistory
+                </span>
+                <span className="text-xs text-gray-500 mt-1 uppercase tracking-wider">Business Inventory Simplified</span>
               </div>
             </div>
             

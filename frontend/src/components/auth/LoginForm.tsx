@@ -46,20 +46,22 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-indigo-200 to-pink-200 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <Card className="login-animate glass-card shadow-2xl border-0 backdrop-blur-md">
-          <style>{`.glass-card { box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 0 32px 4px rgba(59,130,246,0.12); padding: 2.5rem 2rem; }`}</style>
-          <CardHeader className="space-y-1 text-center pb-4">
-            <img src="/bigLogo.svg" alt="UA Trackistory Logo" className="mx-auto h-20 w-auto mb-4 drop-shadow-lg" />
-            <div className="mx-auto w-14 h-14 bg-gradient-to-br from-blue-200 to-indigo-400 rounded-full flex items-center justify-center mb-4 shadow-md">
-              <Lock className="h-7 w-7 text-blue-700" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-400 via-indigo-200 to-pink-200 flex items-center justify-center p-2">
+      <div className="w-full max-w-sm">
+        <Card className="login-animate glass-card shadow-2xl border-0 backdrop-blur-md pt-12 pb-12 mt-8 mb-8 rounded-3xl">
+          <style>{`.glass-card { box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.18), 0 0 32px 4px rgba(59,130,246,0.12); }`}</style>
+          <CardHeader className="space-y-1 text-center pb-1 pt-1">
+            <div className="mx-auto mb-2 flex flex-col items-center w-fit">
+              <img src="/logo.png" alt="UA Trackistory Logo" className="h-20 w-auto mb-2 drop-shadow-lg" />
+              <span className="text-4xl font-extrabold tracking-wide bg-gradient-to-r from-slate-700 to-blue-700 bg-clip-text text-transparent drop-shadow-sm">
+                Trackistory
+              </span>
             </div>
             <CardTitle className="text-3xl font-bold tracking-tight text-gray-800 drop-shadow-sm">Sign In</CardTitle>
             <p className="text-base text-gray-600">Enter your credentials to continue</p>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-5">
+          <CardContent className="pt-1 pb-1">
+            <form onSubmit={handleSubmit} className="space-y-3">
               <div className="space-y-2">
                 <Label htmlFor="userId" className="text-gray-700 font-semibold">User ID</Label>
                 <div className="relative">
@@ -115,9 +117,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
               </Button>
             </form>
 
-            <div className="mt-8 text-center text-sm text-gray-500">
+            <div className="mt-4 text-center text-xs text-gray-500">
               <p>Access is restricted to registered users only.</p>
-              <p className="mt-1">Contact your administrator for account registration.</p>
+              <p className="mt-0.5">Contact your administrator for account registration.</p>
             </div>
           </CardContent>
         </Card>
