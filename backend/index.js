@@ -11,6 +11,7 @@ const customersRouter = require('./routes/customers');
 const vendorsRouter = require('./routes/vendors');
 
 const app = express();
+app.get('/healthz', (req, res) => res.status(200).send('OK'));
 // const frontendUrl = process.env.FRONTEND_URL; // Get frontend URL from .env
 // const allowedOrigins = [
 //   'http://localhost:8080', // React default
