@@ -118,6 +118,41 @@ async function initializeCompanyTables(dbUrl) {
       description TEXT NOT NULL,
       date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE IF NOT EXISTS invoice_serials (
+      prefix TEXT NOT NULL,
+      year INT NOT NULL,
+      month INT NOT NULL,
+      serial INT NOT NULL,
+      PRIMARY KEY (prefix, year, month)
+    );
+
+    CREATE OR REPLACE FUNCTION get_next_invoice_serial(p_prefix TEXT, p_year INT, p_month INT)
+    RETURNS INT AS $$
+    DECLARE
+        next_serial INT;
+    BEGIN
+        LOOP
+            -- Try to update the serial if it exists
+            UPDATE invoice_serials
+            SET serial = serial + 1
+            WHERE prefix = p_prefix AND year = p_year AND month = p_month
+            RETURNING serial INTO next_serial;
+
+            IF FOUND THEN
+                RETURN next_serial;
+            END IF;
+
+            -- If not found, insert a new row with serial = 1
+            BEGIN
+                INSERT INTO invoice_serials(prefix, year, month, serial)
+                VALUES (p_prefix, p_year, p_month, 1);
+                RETURN 1;
+            EXCEPTION WHEN unique_violation THEN
+                -- If another transaction inserted at the same time, loop and try again
+            END;
+        END LOOP;
+    END;
+    $$ LANGUAGE plpgsql;
   `);
   console.log('All tables ensured for company DB:', dbUrl);
 }

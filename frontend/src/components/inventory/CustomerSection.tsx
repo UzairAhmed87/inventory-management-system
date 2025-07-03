@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { MonthlySummaryPDF } from './MonthlySummaryPDF';
 import { apiService, LedgerEntry } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 export const CustomerSection = () => {
   const { 
@@ -66,6 +67,17 @@ export const CustomerSection = () => {
   const [customerLedger, setCustomerLedger] = useState<LedgerEntry[]>([]);
 
   const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => (currentYear - i).toString());
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth()).toString());
+  const [selectedYear, setSelectedYear] = useState(currentYear.toString());
+
+  const [filterMode, setFilterMode] = useState<'monthYear' | 'dateRange'>('monthYear');
 
   useEffect(() => {
     fetchCustomers();
@@ -268,12 +280,44 @@ export const CustomerSection = () => {
     if (selectedCustomer) {
       const customer = customers.find(c => c.id === selectedCustomer);
       if (customer) {
-        apiService.getCustomerLedger(customer.name, dateFrom || undefined, dateTo || undefined)
-          .then(setCustomerLedger)
-          .catch(() => setCustomerLedger([]));
+        if (filterMode === 'monthYear') {
+          const year = parseInt(selectedYear);
+          const month = parseInt(selectedMonth);
+          const firstDay = new Date(year, month, 1).toISOString().slice(0, 10);
+          const lastDay = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+          apiService.getCustomerLedger(customer.name, firstDay, lastDay)
+            .then(setCustomerLedger)
+            .catch(() => setCustomerLedger([]));
+        } else {
+          apiService.getCustomerLedger(customer.name, dateFrom || undefined, dateTo || undefined)
+            .then(setCustomerLedger)
+            .catch(() => setCustomerLedger([]));
+        }
       }
     }
-  }, [selectedCustomer, dateFrom, dateTo, customers]);
+  }, [selectedCustomer, dateFrom, dateTo, customers, filterMode, selectedMonth, selectedYear]);
+
+  const handleMonthChange = (val: string) => {
+    setSelectedMonth(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleYearChange = (val: string) => {
+    setSelectedYear(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateFrom(e.target.value);
+    setFilterMode('dateRange');
+  };
+
+  const handleDateToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateTo(e.target.value);
+    setFilterMode('dateRange');
+  };
+
+  const isMonthYearSelected = () => filterMode === 'monthYear';
 
   return (
     <div className="space-y-6">
@@ -463,26 +507,42 @@ export const CustomerSection = () => {
           <DialogHeader>
             <DialogTitle>Ledger for {customers.find((c) => c.id === selectedCustomer)?.name}</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
+          <div className="flex flex-wrap gap-2 items-end mb-4">
+            <div>
+              <Label>Month</Label>
+              <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((month, idx) => (
+                    <SelectItem key={month} value={idx.toString()}>{month}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Year</Label>
+              <Select value={selectedYear} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="dateFrom">From</Label>
-              <Input
-                id="dateFrom"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
+              <Input id="dateFrom" type="date" value={dateFrom} onChange={handleDateFromChange} />
             </div>
             <div>
               <Label htmlFor="dateTo">To</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
+              <Input id="dateTo" type="date" value={dateTo} onChange={handleDateToChange} />
             </div>
-            <div className="flex items-end space-x-2">
+            <div className="flex gap-2 ml-auto">
               {selectedCustomer && (
                 <PdfExportButton
                   document={
@@ -495,7 +555,7 @@ export const CustomerSection = () => {
                         Balance: entry.balance.toFixed(2),
                       }))}
                       title={`${customers.find(c => c.id === selectedCustomer)?.name} - Ledger`}
-                      subtitle={`Date Range: ${(dateFrom && dateTo) ? `${dateFrom} to ${dateTo}` : 'All Time'}`}
+                      subtitle={isMonthYearSelected() ? `${months[parseInt(selectedMonth)]} ${selectedYear}` : (dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time')}
                       companyName={companyName}
                     />
                   }
@@ -510,7 +570,8 @@ export const CustomerSection = () => {
                   Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
                   Balance: entry.balance.toFixed(2),
                 }));
-                if(data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === selectedCustomer)?.name}_Ledger`, companyName);
+                let label = isMonthYearSelected() ? `${months[parseInt(selectedMonth)]}_${selectedYear}` : (dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : 'All_Time');
+                if(data) ExportUtils.exportToExcel(data, `${customers.find(c => c.id === selectedCustomer)?.name}_Ledger_${label}`, companyName);
               }}>
                 Export Excel
               </Button>
@@ -538,11 +599,12 @@ export const CustomerSection = () => {
                   </TableRow>
                 ))}
                 {selectedCustomer && customerLedger.length > 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
-                    <TableCell className="font-bold text-right">
-                      {customerLedger[customerLedger.length - 1].balance.toFixed(2)}
-                    </TableCell>
+                  <TableRow className="font-bold border-2 border-black bg-gray-100">
+                    <TableCell className="border-2 border-black"></TableCell>
+                    <TableCell className="border-2 border-black">Total</TableCell>
+                    <TableCell className="border-2 border-black text-right">{customerLedger.reduce((sum, e) => sum + (e.debit || 0), 0).toFixed(2)}</TableCell>
+                    <TableCell className="border-2 border-black text-right">{customerLedger.reduce((sum, e) => sum + (e.credit || 0), 0).toFixed(2)}</TableCell>
+                    <TableCell className="border-2 border-black text-right">{customerLedger[customerLedger.length - 1].balance.toFixed(2)}</TableCell>
                   </TableRow>
                 )}
                 {selectedCustomer && customerLedger.length === 0 && (

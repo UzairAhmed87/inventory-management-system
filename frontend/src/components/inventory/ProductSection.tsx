@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAuthStore } from '@/store/authStore';
 import { useInventoryStore } from '@/store/inventoryStore';
+import { Plus, Edit, Trash } from 'lucide-react';
 
 type StockFilter = 'all' | 'in-stock' | 'low-stock' | 'out-of-stock';
 
@@ -245,34 +246,36 @@ export default function ProductSection() {
         </div>
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Actions</TableHead>
+            <TableRow className="bg-blue-100">
+              <TableHead className="border border-gray-300">Name</TableHead>
+              <TableHead className="border border-gray-300">Quantity</TableHead>
+              <TableHead className="border border-gray-300">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredProducts.map((product) => (
-              <TableRow key={product.id}>
-                <TableCell>{product.name}</TableCell>
-                <TableCell>{safeNumber(product.quantity)}</TableCell>
-                <TableCell>
+              <TableRow key={product.id} style={{height: '28px', minHeight: '28px'}} className="!py-0">
+                <TableCell className="border border-gray-300" style={{paddingTop: '2px', paddingBottom: '2px', fontSize: '0.95rem'}}>{product.name}</TableCell>
+                <TableCell className="border border-gray-300" style={{paddingTop: '2px', paddingBottom: '2px', fontSize: '0.95rem'}}>{safeNumber(product.quantity)}</TableCell>
+                <TableCell className="border border-gray-300" style={{paddingTop: '2px', paddingBottom: '2px'}}>
                   <div className="flex space-x-2">
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleEdit(product)}
-                      style={{backgroundColor:'green',color:'white'}}
+                      className="bg-blue-50 p-1 rounded"
+                      aria-label="Edit"
                     >
-                      Edit
+                      <Edit className="h-4 w-4 text-blue-500" />
                     </Button>
                     <Button
-                      variant="outline"
-                      size="sm"
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleDelete(product.id)}
-                      style={{backgroundColor:'red',color:'white'}}
+                      className="bg-red-50 p-1 rounded"
+                      aria-label="Delete"
                     >
-                      Delete
+                      <Trash className="h-4 w-4 text-red-600" />
                     </Button>
                   </div>
                 </TableCell>

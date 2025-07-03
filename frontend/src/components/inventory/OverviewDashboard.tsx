@@ -82,8 +82,8 @@ export const OverviewDashboard = ({ cashInHand }: { cashInHand: number }) => {
     totalTransactions: transactions.length,
 
     // Balance stats
-    totalCustomerBalance: customers.reduce((sum, c) => sum + (c.balance || 0), 0),
-    totalVendorBalance: vendors.reduce((sum, v) => sum + (v.balance || 0), 0),
+    totalCustomerBalance: customers.reduce((sum, c) => sum + Number(c.balance || 0), 0),
+    totalVendorBalance: vendors.reduce((sum, v) => sum + Number(v.balance || 0), 0),
   };
 
   // Calculate growth percentages

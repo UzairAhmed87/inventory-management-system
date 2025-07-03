@@ -7,6 +7,7 @@ import { Plus } from 'lucide-react';
 import { ExportUtils } from '@/utils/exportUtils';
 import { useInventoryStore } from '@/store/inventoryStore';
 import { useAuthStore } from '@/store/authStore';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = ({ cashInHandBeforeExpenses }) => {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -15,9 +16,20 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
   const [expenseError, setExpenseError] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const { balancePayments, expenses, fetchExpenses, addExpense } = useInventoryStore();
   const [showGeneralLedger, setShowGeneralLedger] = useState(false);
   const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => (currentYear - i).toString());
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth()).toString());
+  const [selectedYear, setSelectedYear] = useState(currentYear.toString());
+  const [filterMode, setFilterMode] = useState<'monthYear' | 'dateRange'>('monthYear');
 
   useEffect(() => {
     fetchExpenses();
@@ -46,14 +58,15 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
     }
   };
 
-  // Filter expenses by date range
+  // Filter expenses by date range and search term
   const filteredExpenses = expenses.filter(e => {
-    if (!fromDate && !toDate) return true;
+    if (!fromDate && !toDate && !searchTerm) return true;
     const expenseDate = new Date(e.date.split(',')[0]);
     const from = fromDate ? new Date(fromDate) : null;
     const to = toDate ? new Date(toDate) : null;
     if (from && expenseDate < from) return false;
     if (to && expenseDate > to) return false;
+    if (searchTerm && !e.description.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     return true;
   });
 
@@ -123,8 +136,12 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
   const netChange = ledgerWithBalance.length > 0 ? ledgerWithBalance[ledgerWithBalance.length - 1].balance - previousCashInHand : 0;
   const currentCashInHand = ledgerWithBalance.length > 0 ? ledgerWithBalance[ledgerWithBalance.length - 1].balance : previousCashInHand;
 
+  // Helper to check if month/year filter is active
+  const isMonthYearSelected = () => filterMode === 'monthYear';
+
   // Export functions for unified ledger
   const handleExportLedgerExcel = () => {
+    let label = isMonthYearSelected() ? `${months[parseInt(selectedMonth)]}_${selectedYear}` : (fromDate && toDate ? `${fromDate}_to_${toDate}` : 'All_Time');
     ExportUtils.exportToExcel(
       ledgerWithBalance.map(e => ({
         Date: e.date,
@@ -133,12 +150,13 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
         Credit: e.credit > 0 ? e.credit.toFixed(2) : '',
         Balance: e.balance.toFixed(2),
       })),
-      'General_Ledger',
+      `General_Ledger_${label}`,
       companyName
     );
   };
 
   const handleExportLedgerPDF = () => {
+    let subtitle = isMonthYearSelected() ? `${months[parseInt(selectedMonth)]} ${selectedYear}` : (fromDate && toDate ? `${fromDate} to ${toDate}` : undefined);
     ExportUtils.exportToPDF(
       ledgerWithBalance.map(e => ({
         Date: e.date,
@@ -148,7 +166,7 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
         Balance: e.balance.toFixed(2),
       })),
       'General Ledger',
-      fromDate || toDate ? `${fromDate || '...'} to ${toDate || '...'}` : undefined,
+      subtitle,
       {
         previousCashInHand,
         netChange,
@@ -182,6 +200,26 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
     );
   };
 
+  const handleMonthChange = (val: string) => {
+    setSelectedMonth(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleYearChange = (val: string) => {
+    setSelectedYear(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleFromDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFromDate(e.target.value);
+    setFilterMode('dateRange');
+  };
+
+  const handleToDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setToDate(e.target.value);
+    setFilterMode('dateRange');
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -197,6 +235,16 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
         </div>
       </div>
       <div className="flex flex-wrap gap-4 mb-4 items-end">
+        <div>
+          <Label>Search</Label>
+          <Input
+            type="text"
+            placeholder="Search description..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="min-w-[250px]"
+          />
+        </div>
         <div>
           <Label>From</Label>
           <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
@@ -253,17 +301,45 @@ export const ExpensesSection: React.FC<{ cashInHandBeforeExpenses?: number }> = 
               <div className="text-lg font-bold text-green-700">PKR {currentCashInHand.toFixed(2)}</div>
             </div>
           </div> */}
-          <div className="flex flex-wrap gap-4 mb-4 items-end">
+          <div className="flex flex-wrap gap-2 items-end mb-4">
+            <div>
+              <Label>Month</Label>
+              <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((month, idx) => (
+                    <SelectItem key={month} value={idx.toString()}>{month}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Year</Label>
+              <Select value={selectedYear} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label>From</Label>
-              <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+              <Input type="date" value={fromDate} onChange={handleFromDateChange} />
             </div>
             <div>
               <Label>To</Label>
-              <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+              <Input type="date" value={toDate} onChange={handleToDateChange} />
             </div>
-            <Button onClick={handleExportLedgerExcel} className="bg-green-600 text-white">Export Excel</Button>
-            <Button onClick={handleExportLedgerPDF} className="bg-red-600 text-white">Export PDF</Button>
+            <div className="flex gap-2 ml-auto">
+              <Button onClick={handleExportLedgerExcel} className="bg-green-600 text-white">Export Excel</Button>
+              <Button onClick={handleExportLedgerPDF} className="bg-red-600 text-white">Export PDF</Button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm border">

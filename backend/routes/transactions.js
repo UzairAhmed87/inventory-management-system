@@ -187,17 +187,21 @@ router.get('/invoice/:invoice_number', async (req, res) => {
   }
 });
 
-// Helper to generate invoice number
-function generateInvoiceNumber(type) {
+// Helper to generate invoice number using DB function for atomic serial
+async function generateInvoiceNumber(type, pool) {
   const prefix = type === 'sale' ? 'INV' : type === 'purchase' ? 'PUR' : 'RET';
   const now = new Date();
-  return (
-    prefix +
-    now.getFullYear() +
-    String(now.getMonth() + 1).padStart(2, '0') +
-    String(now.getDate()).padStart(2, '0') +
-    String(Math.floor(Math.random() * 1000000)).padStart(6, '0')
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const day = String(now.getDate()).padStart(2, '0');
+  // Get the next serial atomically from the DB
+  const { rows } = await pool.query(
+    'SELECT get_next_invoice_serial($1, $2, $3) AS serial',
+    [prefix, year, month]
   );
+  const serial = rows[0].serial;
+  const invoice_number = `${prefix}${year}${String(month).padStart(2, '0')}${day}${serial}`;
+  return invoice_number;
 }
 
 // Helper to generate payment invoice number
@@ -262,8 +266,8 @@ router.post('/', async (req, res) => {
       newBalance = previousBalance - Number(total_amount);
       await pool.query('UPDATE vendors SET balance = $1 WHERE name = $2', [newBalance, vendor_name]);
     }
-    // Generate invoice number
-    const invoice_number = generateInvoiceNumber(type);
+    // Generate invoice number (serial per month)
+    const invoice_number = await generateInvoiceNumber(type, pool);
     // Insert transaction (use customer_name and vendor_name)
     const transactionResult = await pool.query(
       `INSERT INTO transactions (invoice_number, type, customer_name, vendor_name, total_amount, date)
