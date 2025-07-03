@@ -23,6 +23,7 @@ import {toast} from 'sonner';
 import { MonthlySummaryPDF } from './MonthlySummaryPDF';
 import { apiService, LedgerEntry } from '@/services/api';
 import { useAuthStore } from '@/store/authStore';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 export const VendorSection = () => {
   const { vendors, addVendor, updateVendor, deleteVendor, transactions, fetchVendors, fetchTransactions, addBalancePayment, balancePayments, fetchBalancePayments, setGlobalLoader } = useInventoryStore();
@@ -46,6 +47,16 @@ export const VendorSection = () => {
   const [outstandingData, setOutstandingData] = useState<any[]>([]);
   const [vendorLedger, setVendorLedger] = useState<LedgerEntry[]>([]);
   const companyName = useAuthStore((state) => state.companyName) || useAuthStore((state) => state.currentUser) || 'Company Name';
+  const [filterMode, setFilterMode] = useState<'monthYear' | 'dateRange'>('monthYear');
+
+  const months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 10 }, (_, i) => (currentYear - i).toString());
+  const [selectedMonth, setSelectedMonth] = useState((new Date().getMonth()).toString());
+  const [selectedYear, setSelectedYear] = useState(currentYear.toString());
 
   useEffect(() => {
     fetchVendors();
@@ -242,12 +253,44 @@ export const VendorSection = () => {
     if (selectedVendor) {
       const vendor = vendors.find(v => v.id === selectedVendor);
       if (vendor) {
-        apiService.getVendorLedger(vendor.name, dateFrom || undefined, dateTo || undefined)
-          .then(setVendorLedger)
-          .catch(() => setVendorLedger([]));
+        if (filterMode === 'monthYear') {
+          const year = parseInt(selectedYear);
+          const month = parseInt(selectedMonth);
+          const firstDay = new Date(year, month, 1).toISOString().slice(0, 10);
+          const lastDay = new Date(year, month + 1, 0).toISOString().slice(0, 10);
+          apiService.getVendorLedger(vendor.name, firstDay, lastDay)
+            .then(setVendorLedger)
+            .catch(() => setVendorLedger([]));
+        } else {
+          apiService.getVendorLedger(vendor.name, dateFrom || undefined, dateTo || undefined)
+            .then(setVendorLedger)
+            .catch(() => setVendorLedger([]));
+        }
       }
     }
-  }, [selectedVendor, dateFrom, dateTo, vendors]);
+  }, [selectedVendor, dateFrom, dateTo, vendors, filterMode, selectedMonth, selectedYear]);
+
+  const handleMonthChange = (val: string) => {
+    setSelectedMonth(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleYearChange = (val: string) => {
+    setSelectedYear(val);
+    setFilterMode('monthYear');
+  };
+
+  const handleDateFromChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateFrom(e.target.value);
+    setFilterMode('dateRange');
+  };
+
+  const handleDateToChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setDateTo(e.target.value);
+    setFilterMode('dateRange');
+  };
+
+  const isMonthYearSelected = () => filterMode === 'monthYear';
 
   return (
     <div className="space-y-6">
@@ -449,26 +492,42 @@ export const VendorSection = () => {
               Ledger for {vendors.find((v) => v.id === selectedVendor)?.name}
             </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
+          <div className="flex flex-wrap gap-2 items-end mb-4">
+            <div>
+              <Label>Month</Label>
+              <Select value={selectedMonth} onValueChange={handleMonthChange}>
+                <SelectTrigger className="w-32">
+                  <SelectValue placeholder="Select month" />
+                </SelectTrigger>
+                <SelectContent>
+                  {months.map((month, idx) => (
+                    <SelectItem key={month} value={idx.toString()}>{month}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Year</Label>
+              <Select value={selectedYear} onValueChange={handleYearChange}>
+                <SelectTrigger className="w-24">
+                  <SelectValue placeholder="Select year" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div>
               <Label htmlFor="dateFrom">From</Label>
-              <Input
-                id="dateFrom"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
+              <Input id="dateFrom" type="date" value={dateFrom} onChange={handleDateFromChange} />
             </div>
             <div>
               <Label htmlFor="dateTo">To</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
+              <Input id="dateTo" type="date" value={dateTo} onChange={handleDateToChange} />
             </div>
-            <div className="flex items-end space-x-2">
+            <div className="flex gap-2 ml-auto">
               {selectedVendor && (
                 <PdfExportButton
                   document={
@@ -481,7 +540,7 @@ export const VendorSection = () => {
                         Balance: entry.balance.toFixed(2),
                       }))}
                       title={`${vendors.find(v => v.id === selectedVendor)?.name} - Ledger`}
-                      subtitle={`Date Range: ${(dateFrom && dateTo) ? `${dateFrom} to ${dateTo}` : 'All Time'}`}
+                      subtitle={isMonthYearSelected() ? `${months[parseInt(selectedMonth)]} ${selectedYear}` : (dateFrom && dateTo ? `${dateFrom} to ${dateTo}` : 'All Time')}
                       companyName={companyName}
                     />
                   }
@@ -496,7 +555,8 @@ export const VendorSection = () => {
                   Credit: entry.credit > 0 ? entry.credit.toFixed(2) : '',
                   Balance: entry.balance.toFixed(2),
                 }));
-                if (data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === selectedVendor)?.name}_Ledger`, companyName);
+                let label = isMonthYearSelected() ? `${months[parseInt(selectedMonth)]}_${selectedYear}` : (dateFrom && dateTo ? `${dateFrom}_to_${dateTo}` : 'All_Time');
+                if(data) ExportUtils.exportToExcel(data, `${vendors.find(v => v.id === selectedVendor)?.name}_Ledger_${label}`, companyName);
               }}>
                 Export Excel
               </Button>
@@ -524,11 +584,12 @@ export const VendorSection = () => {
                   </TableRow>
                 ))}
                 {selectedVendor && vendorLedger.length > 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="font-bold text-right">Total Balance</TableCell>
-                    <TableCell className="font-bold text-right">
-                      {vendorLedger[vendorLedger.length - 1].balance.toFixed(2)}
-                    </TableCell>
+                  <TableRow className="font-bold border-2 border-black bg-gray-100">
+                    <TableCell className="border-2 border-black"></TableCell>
+                    <TableCell className="border-2 border-black">Total</TableCell>
+                    <TableCell className="border-2 border-black text-right">{vendorLedger.reduce((sum, e) => sum + (e.debit || 0), 0).toFixed(2)}</TableCell>
+                    <TableCell className="border-2 border-black text-right">{vendorLedger.reduce((sum, e) => sum + (e.credit || 0), 0).toFixed(2)}</TableCell>
+                    <TableCell className="border-2 border-black text-right">{vendorLedger[vendorLedger.length - 1].balance.toFixed(2)}</TableCell>
                   </TableRow>
                 )}
                 {selectedVendor && vendorLedger.length === 0 && (
