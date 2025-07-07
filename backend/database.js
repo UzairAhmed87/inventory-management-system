@@ -61,6 +61,7 @@ async function initializeProductsTable(companyId) {
 
 // Function to initialize minimal company tables with new requirements
 async function initializeCompanyTables(dbUrl) {
+try{
   const pool = getDbPoolByUrl(dbUrl);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
@@ -155,17 +156,28 @@ async function initializeCompanyTables(dbUrl) {
     $$ LANGUAGE plpgsql;
   `);
   console.log('All tables ensured for company DB:', dbUrl);
-}
+}catch (err) {
+    console.error('🔥 initializeCompanyTables ERROR:', err);
+    throw err;
+  }}
 
 // Helper to check if all tables exist, and auto-create if missing
 async function ensureCompanyTables(dbUrl) {
-  const pool = getDbPoolByUrl(dbUrl);
-  // Check for one table as a proxy (products)
-  const res = await pool.query(`SELECT to_regclass('public.products') as exists`);
-  if (!res.rows[0].exists) {
-    await initializeCompanyTables(dbUrl);
+  try {
+    const pool = getDbPoolByUrl(dbUrl);
+    const res = await pool.query(`SELECT to_regclass('public.products') as exists`);
+    if (!res.rows[0].exists) {
+      console.log('🧱 Tables missing, initializing...');
+      await initializeCompanyTables(dbUrl);
+    } else {
+      console.log('✅ Company tables already exist.');
+    }
+  } catch (err) {
+    console.error('❌ ensureCompanyTables FAILED:', err);
+    throw new Error('Failed to ensure company tables');
   }
 }
+
 
 if (require.main === module) {
   initializeProductsTable().then(() => process.exit()).catch(e => { console.error(e); process.exit(1); });
